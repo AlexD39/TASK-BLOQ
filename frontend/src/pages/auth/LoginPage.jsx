@@ -1,112 +1,67 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LockKeyhole, Mail, TriangleAlert, } from 'lucide-react';
-import { login } from '../../services/auth.service.js';
+import { LockKeyhole, Mail, TriangleAlert } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext.jsx'; // <--- Importamos tu contexto
 import '../../styles/login.css';
 
 function LoginPage() {
   const navigate = useNavigate();
-const [mensajeError, setMensajeError] =
-  useState('');
-const [enviando, setEnviando] =
-  useState(false);
+  const { login } = useAuth(); // <--- Consumimos la función login del contexto
+
+  const [mensajeError, setMensajeError] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [correo, setCorreo] = useState('');
   const [contrasena, setContrasena] = useState('');
 
   async function handleSubmit(event) {
-  event.preventDefault();
+    event.preventDefault();
+    setMensajeError('');
 
-  setMensajeError('');
+    const correoLimpio = correo.trim();
 
-  const correoLimpio = correo.trim();
+    if (!correoLimpio || !contrasena) {
+      setMensajeError('El correo y la contraseña son obligatorios.');
+      return;
+    }
 
-  if (!correoLimpio || !contrasena) {
-    setMensajeError(
-      'El correo y la contraseña son obligatorios.',
-    );
+    try {
+      setEnviando(true);
 
-    return;
+      // Ejecutamos el login simulado del AuthContext
+      const resultado = login(correoLimpio, contrasena);
+
+      if (resultado.success) {
+        // Si es correcto, redirigimos al dashboard
+        navigate('/dashboard');
+      } else {
+        // Si falla (credenciales incorrectas), mostramos el mensaje del contexto
+        setMensajeError(resultado.message);
+      }
+    } catch (error) {
+      setMensajeError('Ocurrió un error inesperado al intentar iniciar sesión.');
+    } finally {
+      setEnviando(false);
+    }
   }
-
-  try {
-    setEnviando(true);
-
-    const data = await login({
-      correo: correoLimpio,
-      contrasena,
-    });
-
-    sessionStorage.setItem(
-      'accessToken',
-      data.accessToken,
-    );
-
-    sessionStorage.setItem(
-      'usuario',
-      JSON.stringify(data.usuario),
-    );
-
-    navigate('/dashboard');
-  } catch (error) {
-  if (error.status === 401) {
-    setMensajeError(
-      'Correo electrónico o contraseña incorrectos. Verifica tus datos.',
-    );
-
-    return;
-  }
-
-  if (error.status === 403) {
-    setMensajeError(
-      'La cuenta se encuentra inactiva. Contacta al administrador.',
-    );
-
-    return;
-  }
-
-  setMensajeError(
-    error.message ||
-      'No fue posible conectar con el servidor.',
-  );
-} finally {
-  setEnviando(false);
-}
-}
 
   return (
     <main className="login-page">
-      <section
-        className="login-card"
-        aria-labelledby="login-title"
-      >
+      <section className="login-card" aria-labelledby="login-title">
         <header className="login-header">
           <div className="login-logo" aria-hidden="true">
             TB
           </div>
-
           <h1 id="login-title">TASK BLOQ</h1>
-
           <p>Tablero Académico en Equipo</p>
         </header>
 
-        <form
-          className="login-form"
-          onSubmit={handleSubmit}
-        >
+        <form className="login-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="correo">
-              Correo electrónico
-            </label>
-
+            <label htmlFor="correo">Correo electrónico</label>
             <div className="input-wrapper">
               <span className="input-icon">
-  <Mail
-    size={21}
-    strokeWidth={1.8}
-    aria-hidden="true"
-  />
-</span>
-
+                <Mail size={21} strokeWidth={1.8} aria-hidden="true" />
+              </span>
               <input
                 id="correo"
                 name="correo"
@@ -114,28 +69,18 @@ const [enviando, setEnviando] =
                 placeholder="usuario@taskbloq.edu"
                 autoComplete="username"
                 value={correo}
-                onChange={(event) =>
-                  setCorreo(event.target.value)
-                }
+                onChange={(event) => setCorreo(event.target.value)}
                 required
               />
             </div>
           </div>
 
           <div className="form-group">
-            <label htmlFor="contrasena">
-              Contraseña
-            </label>
-
+            <label htmlFor="contrasena">Contraseña</label>
             <div className="input-wrapper">
               <span className="input-icon">
-  <LockKeyhole
-    size={21}
-    strokeWidth={1.8}
-    aria-hidden="true"
-  />
-</span>
-
+                <LockKeyhole size={21} strokeWidth={1.8} aria-hidden="true" />
+              </span>
               <input
                 id="contrasena"
                 name="contrasena"
@@ -143,45 +88,27 @@ const [enviando, setEnviando] =
                 placeholder="••••••••"
                 autoComplete="current-password"
                 value={contrasena}
-                onChange={(event) =>
-                  setContrasena(event.target.value)
-                }
+                onChange={(event) => setContrasena(event.target.value)}
                 required
               />
             </div>
           </div>
 
-          <button
-  type="submit"
-  className="login-button"
-  disabled={enviando}
->
-  {enviando
-    ? 'Validando...'
-    : 'Iniciar sesión'}
-</button>
+          <button type="submit" className="login-button" disabled={enviando}>
+            {enviando ? 'Validando...' : 'Iniciar sesión'}
+          </button>
         </form>
 
-{mensajeError && (
-  <div
-    className="login-alert"
-    role="alert"
-    aria-live="assertive"
-  >
-    <TriangleAlert
-      className="login-alert__icon"
-      size={22}
-      strokeWidth={2}
-      aria-hidden="true"
-    />
+        {mensajeError && (
+          <div className="login-alert" role="alert" aria-live="assertive">
+            <TriangleAlert className="login-alert__icon" size={22} strokeWidth={2} aria-hidden="true" />
+            <p>{mensajeError}</p>
+          </div>
+        )}
 
-    <p>{mensajeError}</p>
-  </div>
-)}
-
-<div className="login-note">
-  Acceso exclusivo para usuarios registrados
-</div>
+        <div className="login-note">
+          Acceso exclusivo para usuarios registrados
+        </div>
       </section>
 
       <footer className="login-footer">
