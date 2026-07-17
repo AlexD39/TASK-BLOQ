@@ -847,11 +847,22 @@ app.get(
             WHERE c.id_actividad = a.id_actividad
           ) AS comentarios,
 
-          (
-            SELECT COUNT(*)::INTEGER
-            FROM evidencias e
-            WHERE e.id_actividad = a.id_actividad
-          ) AS evidencias
+          COALESCE(
+  (
+    SELECT json_agg(
+      json_build_object(
+        'id', e.id_evidencia,
+        'enlace', e.enlace,
+        'descripcion', e.descripcion,
+        'estado', e.estado
+      )
+      ORDER BY e.id_evidencia
+    )
+    FROM evidencias e
+    WHERE e.id_actividad = a.id_actividad
+  ),
+  '[]'::json
+) AS evidencias
 
         FROM actividades a
 
@@ -938,7 +949,46 @@ app.patch(
               .toUpperCase()
           : '';
 
+      const evidenciasRecibidas =
+  Array.isArray(request.body?.evidencias)
+    ? request.body.evidencias
+    : [];
+
+const evidencias = evidenciasRecibidas
+  .filter(
+    (evidencia) =>
+      typeof evidencia === 'string',
+  )
+  .map((evidencia) =>
+    evidencia.trim(),
+  )
+  .filter(Boolean);
+
       const errors = {};
+    
+if (evidencias.length > 20) {
+  errors.evidencias =
+    'Solo puedes agregar hasta 20 evidencias.';
+}
+
+const evidenciaInvalida =
+  evidencias.find((enlace) => {
+    try {
+      const url = new URL(enlace);
+
+      return ![
+        'http:',
+        'https:',
+      ].includes(url.protocol);
+    } catch {
+      return true;
+    }
+  });
+
+if (evidenciaInvalida) {
+  errors.evidencias =
+    'Todas las evidencias deben contener un enlace válido.';
+}
 
       if (!titulo) {
         errors.titulo =
@@ -1027,66 +1077,117 @@ app.patch(
         });
       }
 
-      const result = await pool.query(
-        `
-          WITH actividad_actualizada AS (
-            UPDATE actividades
-            SET
-              titulo = $1,
-              descripcion = $2,
-              fecha_limite = $3,
-              prioridad = $4,
-              estatus = $5
-            WHERE id_actividad = $6
-            RETURNING *
-          )
-          SELECT
-            a.id_actividad,
-            a.titulo,
-            a.descripcion,
-            a.id_creador,
-            a.id_responsable,
-            a.fecha_limite,
-            a.estatus,
-            a.prioridad,
-            a.creado_en,
-            a.actualizado_en,
+      const client = await pool.connect();
 
-            CASE
-              WHEN responsable.id_usuario IS NULL
-                THEN NULL
-              ELSE json_build_object(
-                'id',
-                responsable.id_usuario,
-                'nombre',
-                responsable.nombre,
-                'correo',
-                responsable.correo
-              )
-            END AS responsable
+try {
+  await client.query('BEGIN');
 
-          FROM actividad_actualizada a
+  const result = await client.query(
+    `
+      WITH actividad_actualizada AS (
+        UPDATE actividades
+        SET
+          titulo = $1,
+          descripcion = $2,
+          fecha_limite = $3,
+          prioridad = $4,
+          estatus = $5
+        WHERE id_actividad = $6
+        RETURNING *
+      )
+      SELECT
+        a.id_actividad AS id,
+        a.titulo,
+        COALESCE(
+          a.descripcion,
+          ''
+        ) AS descripcion,
+        a.id_creador AS "idCreador",
+        a.id_responsable AS "idResponsable",
+        a.fecha_limite AS "fechaLimite",
+        a.estatus,
+        a.prioridad,
+        a.creado_en AS "creadoEn",
+        a.actualizado_en AS "actualizadoEn",
 
-          LEFT JOIN usuarios responsable
-            ON responsable.id_usuario =
-              a.id_responsable
-        `,
-        [
-          titulo,
-          descripcion || null,
-          fechaLimite,
-          prioridad,
-          estatus,
-          idActividad,
-        ],
-      );
+        responsable.nombre AS responsable
 
-      return response.status(200).json({
-        ok: true,
-        message:
-          'Actividad actualizada correctamente.',
-        actividad: result.rows[0],
-      });
+      FROM actividad_actualizada a
+
+      LEFT JOIN usuarios responsable
+        ON responsable.id_usuario =
+          a.id_responsable
+    `,
+    [
+      titulo,
+      descripcion || null,
+      fechaLimite,
+      prioridad,
+      estatus,
+      idActividad,
+    ],
+  );
+
+  await client.query(
+    `
+      DELETE FROM evidencias
+      WHERE id_actividad = $1
+    `,
+    [idActividad],
+  );
+
+  for (const enlace of evidencias) {
+    await client.query(
+      `
+        INSERT INTO evidencias (
+          id_actividad,
+          id_usuario_envia,
+          enlace
+        )
+        VALUES ($1, $2, $3)
+      `,
+      [
+        idActividad,
+        request.auth.idUsuario,
+        enlace,
+      ],
+    );
+  }
+
+  const evidenciasResult =
+    await client.query(
+      `
+        SELECT
+          id_evidencia AS id,
+          enlace,
+          descripcion,
+          estado,
+          creado_en AS "creadoEn"
+        FROM evidencias
+        WHERE id_actividad = $1
+        ORDER BY id_evidencia
+      `,
+      [idActividad],
+    );
+
+  await client.query('COMMIT');
+
+  return response.status(200).json({
+    ok: true,
+    message:
+      'Actividad actualizada correctamente.',
+    actividad: {
+      ...result.rows[0],
+      evidencias: evidenciasResult.rows,
+    },
+  });
+} catch (error) {
+  await client.query('ROLLBACK');
+  throw error;
+} finally {
+  client.release();
+}
+      
     } catch (error) {
       console.error(
         'Error actualizando actividad:',
