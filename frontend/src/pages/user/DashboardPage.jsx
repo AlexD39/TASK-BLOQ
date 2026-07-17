@@ -11,6 +11,7 @@ import {
   Paperclip,
   Plus,
   RefreshCw,
+  Send,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -92,6 +93,9 @@ export default function DashboardPage() {
   // Estado para el modal de ver detalles
   const [selectedActivity, setSelectedActivity] = useState(null);
 
+  // Estado para el nuevo comentario que se está escribiendo
+  const [newCommentText, setNewCommentText] = useState('');
+
   const [activities, setActivities] =
     useState(INITIAL_ACTIVITIES);
 
@@ -142,7 +146,6 @@ export default function DashboardPage() {
     setNotification(null);
 
     try {
-      // Pasamos la data del formulario
       const result = await createActivity({
         titulo: activityData.titulo,
         descripcion: activityData.descripcion,
@@ -150,31 +153,27 @@ export default function DashboardPage() {
         fechaLimite: activityData.fechaLimite,
         prioridad: activityData.prioridad,
         estatus: activityData.estatus,
-        evidencia_url: activityData.evidencia_url || '', // Tu nuevo campo de evidencia
+        evidencia_url: activityData.evidencia_url || '',
       });
 
       const savedActivity = result.actividad;
 
-      // 🛠️ Mapeo corregido para soportar tanto la respuesta de simulación como la real
       const newActivity = {
         id: savedActivity.id || savedActivity.id_actividad || Math.floor(Math.random() * 1000),
         titulo: savedActivity.titulo,
         descripcion: savedActivity.descripcion || '',
-        // Si hay un objeto responsable lo lee, de lo contrario busca el string directamente o asigna tu usuario logueado
         responsable:
           savedActivity.responsable?.nombre ||
           activityData.responsable ||
           user?.name ||
           'Sin responsable',
-        // Asegura leer fecha_limite o fechaLimite según sea el caso
         fechaLimite:
           savedActivity.fechaLimite ||
           savedActivity.fecha_limite ||
           activityData.fechaLimite,
         prioridad: savedActivity.prioridad,
         estatus: savedActivity.estatus,
-        comentarios: 0,
-        // Si tiene evidencia (evidencia_url), le marca 1 para que aparezca el icono de clip en la tarjeta
+        comentarios: [], // 💬 Ahora guardamos un array vacío de comentarios al crear la actividad
         evidencias: (savedActivity.evidencia_url || activityData.evidencia_url) ? 1 : 0,
         evidencia_url: savedActivity.evidencia_url || activityData.evidencia_url || '',
       };
@@ -209,6 +208,38 @@ export default function DashboardPage() {
           'No fue posible registrar la actividad.',
       });
     }
+  }
+
+  // 💬 Función para agregar comentarios de manera local
+  function handleAddComment(e) {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+
+    const newComment = {
+      id: Date.now(),
+      autor: user?.name || 'Administrador Demo',
+      texto: newCommentText.trim(),
+      fecha: new Date().toISOString(),
+    };
+
+    // Actualizamos la actividad seleccionada con el nuevo comentario
+    const updatedSelectedActivity = {
+      ...selectedActivity,
+      comentarios: [...(selectedActivity.comentarios || []), newComment]
+    };
+
+    setSelectedActivity(updatedSelectedActivity);
+
+    // Actualizamos el listado global de actividades para que se vea reflejado el contador
+    setActivities((currentActivities) =>
+      currentActivities.map((act) =>
+        act.id === selectedActivity.id
+          ? updatedSelectedActivity
+          : act
+      )
+    );
+
+    setNewCommentText('');
   }
 
   function getActivitiesByStatus(status) {
@@ -480,12 +511,13 @@ export default function DashboardPage() {
                                   .toLowerCase()}
                             </span>
 
-                            {activity.comentarios > 0 && (
+                            {/* 💬 Muestra el contador de comentarios reales si existen */}
+                            {activity.comentarios?.length > 0 && (
                               <span className="activity-card__comments">
                                 <MessageSquare
                                   size={16}
                                 />
-                                {activity.comentarios}
+                                {activity.comentarios.length}
                               </span>
                             )}
                           </div>
@@ -526,7 +558,6 @@ export default function DashboardPage() {
                           )}
 
                           <footer className="activity-card__footer">
-                            {/* 🛠️ ASIGNAMOS EVENTO ONCLICK PARA ABRIR DETALLE */}
                             <button 
                               type="button"
                               onClick={() => setSelectedActivity(activity)}
@@ -557,7 +588,7 @@ export default function DashboardPage() {
         onSubmit={handleCreateActivity}
       />
 
-      {/* 🛠️ MODAL DE DETALLE INTERACTIVO LOCAL */}
+      {/* 🛠️ MODAL DE DETALLE INTERACTIVO LOCAL CON SECCIÓN DE COMENTARIOS */}
       {selectedActivity && (
         <div className="modal-overlay" style={{
           position: 'fixed',
@@ -573,9 +604,12 @@ export default function DashboardPage() {
             borderRadius: '12px',
             padding: '24px',
             width: '90%',
-            maxWidth: '500px',
+            maxWidth: '550px',
             boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-            position: 'relative'
+            position: 'relative',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column'
           }}>
             <button 
               onClick={() => setSelectedActivity(null)}
@@ -589,79 +623,165 @@ export default function DashboardPage() {
               <X size={20} />
             </button>
 
-            <h2 style={{ marginTop: 0, marginBottom: '8px', color: '#1a1a1a' }}>
-              {selectedActivity.titulo}
-            </h2>
-            
-            <span style={{
-              display: 'inline-block',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              backgroundColor: selectedActivity.prioridad === 'ALTA' ? '#fee2e2' : '#fef3c7',
-              color: selectedActivity.prioridad === 'ALTA' ? '#991b1b' : '#92400e',
-              marginBottom: '16px'
-            }}>
-              Prioridad: {selectedActivity.prioridad}
-            </span>
-
-            <div style={{ marginBottom: '16px' }}>
-              <strong style={{ display: 'block', marginBottom: '4px', color: '#555' }}>Descripción:</strong>
-              <p style={{ margin: 0, color: '#333', fontSize: '14px', lineHeight: '1.5' }}>
-                {selectedActivity.descripcion || 'Sin descripción.'}
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-              <div>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Responsable:</strong>
-                <span style={{ fontSize: '14px', color: '#111' }}>{selectedActivity.responsable}</span>
-              </div>
-              <div>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Fecha límite:</strong>
-                <span style={{ fontSize: '14px', color: '#111' }}>{formatDate(selectedActivity.fechaLimite)}</span>
-              </div>
-            </div>
-
-            {/* MOSTRAR TU NUEVO CAMPO DE EVIDENCIA SI EXISTE */}
-            {selectedActivity.evidencia_url && (
-              <div style={{
-                padding: '12px',
-                backgroundColor: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '20px'
+            {/* Parte Superior: Detalles */}
+            <div style={{ overflowY: 'auto', paddingRight: '4px' }}>
+              <h2 style={{ marginTop: 0, marginBottom: '8px', color: '#1a1a1a' }}>
+                {selectedActivity.titulo}
+              </h2>
+              
+              <span style={{
+                display: 'inline-block',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                backgroundColor: selectedActivity.prioridad === 'ALTA' ? '#fee2e2' : '#fef3c7',
+                color: selectedActivity.prioridad === 'ALTA' ? '#991b1b' : '#92400e',
+                marginBottom: '16px'
               }}>
-                <Paperclip size={18} style={{ color: '#16a34a' }} />
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                  <strong style={{ display: 'block', fontSize: '12px', color: '#15803d' }}>Enlace de Evidencia:</strong>
-                  <a 
-                    href={selectedActivity.evidencia_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ fontSize: '13px', color: '#16a34a', textDecoration: 'underline' }}
-                  >
-                    {selectedActivity.evidencia_url}
-                  </a>
+                Prioridad: {selectedActivity.prioridad}
+              </span>
+
+              <div style={{ marginBottom: '16px' }}>
+                <strong style={{ display: 'block', marginBottom: '4px', color: '#555' }}>Descripción:</strong>
+                <p style={{ margin: 0, color: '#333', fontSize: '14px', lineHeight: '1.5' }}>
+                  {selectedActivity.descripcion || 'Sin descripción.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Responsable:</strong>
+                  <span style={{ fontSize: '14px', color: '#111' }}>{selectedActivity.responsable}</span>
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Fecha límite:</strong>
+                  <span style={{ fontSize: '14px', color: '#111' }}>{formatDate(selectedActivity.fechaLimite)}</span>
                 </div>
               </div>
-            )}
+
+              {selectedActivity.evidencia_url && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '20px'
+                }}>
+                  <Paperclip size={18} style={{ color: '#16a34a' }} />
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                    <strong style={{ display: 'block', fontSize: '12px', color: '#15803d' }}>Enlace de Evidencia:</strong>
+                    <a 
+                      href={selectedActivity.evidencia_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '13px', color: '#16a34a', textDecoration: 'underline' }}
+                    >
+                      {selectedActivity.evidencia_url}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              <hr style={{ border: '0', borderTop: '1px solid #e5e7eb', margin: '20px 0' }} />
+
+              {/* 💬 NUEVA SECCIÓN: Comentarios o Notas */}
+              <div style={{ marginBottom: '16px' }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MessageSquare size={18} style={{ color: '#3b82f6' }} />
+                  Comentarios y Notas ({selectedActivity.comentarios?.length || 0})
+                </h3>
+
+                {/* Lista de comentarios */}
+                <div style={{ 
+                  maxHeight: '180px', 
+                  overflowY: 'auto', 
+                  backgroundColor: '#f9fafb', 
+                  borderRadius: '8px', 
+                  padding: '12px',
+                  marginBottom: '12px',
+                  border: '1px solid #f3f4f6'
+                }}>
+                  {!selectedActivity.comentarios || selectedActivity.comentarios.length === 0 ? (
+                    <p style={{ margin: 0, color: '#9ca3af', fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+                      No hay comentarios aún. Escribe el primero abajo.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {selectedActivity.comentarios.map((comment) => (
+                        <div key={comment.id} style={{ 
+                          backgroundColor: '#ffffff', 
+                          padding: '8px 12px', 
+                          borderRadius: '6px', 
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          borderLeft: '3px solid #3b82f6'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <strong style={{ fontSize: '12px', color: '#4b5563' }}>{comment.autor}</strong>
+                            <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                              {new Date(comment.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '13px', color: '#1f2937', lineHeight: '1.4' }}>
+                            {comment.texto}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Formulario para añadir comentario */}
+                <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Escribe una nota o comentario sobre esta actividad..."
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    style={{
+                      backgroundColor: '#3b82f6',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Send size={16} />
+                  </button>
+                </form>
+              </div>
+            </div>
 
             <button 
               onClick={() => setSelectedActivity(null)}
               style={{
                 width: '100%',
                 padding: '10px',
-                backgroundColor: '#3b82f6',
-                color: '#fff',
+                backgroundColor: '#f3f4f6',
+                color: '#4b5563',
                 border: 'none',
                 borderRadius: '6px',
                 fontWeight: '600',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                marginTop: '12px'
               }}
             >
               Cerrar Detalle
