@@ -79,26 +79,10 @@ export default function DashboardPage() {
   // Estado para el nuevo comentario que se está escribiendo
   const [newCommentText, setNewCommentText] = useState('');
 
-  const [activities, setActivities] =
-  useState([]);
+  // 🛠️ SE ELIMINÓ LA DECLARACIÓN DUPLICADA DE actividades AQUÍ
+  const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
 
-  const [activitiesLoading, setActivitiesLoading] =
-    useState(true);
-
- feat/hu-comentarios-actividad
-
-  const [activitiesError, setActivitiesError] =
-  useState('');
-
-  const [selectedActivity,setSelectedActivity,] = 
-  useState(null);
-
- const [isEditModalOpen, setIsEditModalOpen,] = 
-  useState(false);
-
- develop
-  const [notification, setNotification] =
-    useState(null);
+  const [notification, setNotification] = useState(null);
 
     useEffect(() => {
     let componentIsMounted = true;
@@ -307,7 +291,7 @@ export default function DashboardPage() {
           activityData.fechaLimite,
         prioridad: savedActivity.prioridad,
         estatus: savedActivity.estatus,
-        comentarios: [], // 💬 Ahora guardamos un array vacío de comentarios al crear la actividad
+        comentarios: [], 
         evidencias: (savedActivity.evidencia_url || activityData.evidencia_url) ? 1 : 0,
         evidencia_url: savedActivity.evidencia_url || activityData.evidencia_url || '',
       };
@@ -646,7 +630,6 @@ export default function DashboardPage() {
                                   .toLowerCase()}
                             </span>
 
-                            {/* 💬 Muestra el contador de comentarios reales si existen */}
                             {activity.comentarios?.length > 0 && (
                               <span className="activity-card__comments">
                                 <MessageSquare
@@ -732,8 +715,6 @@ export default function DashboardPage() {
         onSubmit={handleCreateActivity}
       />
 
- feat/hu-comentarios-actividad
-      {/* 🛠️ MODAL DE DETALLE INTERACTIVO LOCAL CON SECCIÓN DE COMENTARIOS */}
       {selectedActivity && (
         <div className="modal-overlay" style={{
           position: 'fixed',
@@ -768,7 +749,6 @@ export default function DashboardPage() {
               <X size={20} />
             </button>
 
-            {/* Parte Superior: Detalles */}
             <div style={{ overflowY: 'auto', paddingRight: '4px' }}>
               <h2 style={{ marginTop: 0, marginBottom: '8px', color: '#1a1a1a' }}>
                 {selectedActivity.titulo}
@@ -833,14 +813,12 @@ export default function DashboardPage() {
 
               <hr style={{ border: '0', borderTop: '1px solid #e5e7eb', margin: '20px 0' }} />
 
-              {/* 💬 NUEVA SECCIÓN: Comentarios o Notas */}
               <div style={{ marginBottom: '16px' }}>
                 <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <MessageSquare size={18} style={{ color: '#3b82f6' }} />
                   Comentarios y Notas ({selectedActivity.comentarios?.length || 0})
                 </h3>
 
-                {/* Lista de comentarios */}
                 <div style={{ 
                   maxHeight: '180px', 
                   overflowY: 'auto', 
@@ -879,7 +857,6 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Formulario para añadir comentario */}
                 <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
