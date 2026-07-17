@@ -841,11 +841,25 @@ app.get(
           a.id_responsable AS "idResponsable",
           responsable.nombre AS responsable,
 
-          (
-            SELECT COUNT(*)::INTEGER
-            FROM comentarios c
-            WHERE c.id_actividad = a.id_actividad
-          ) AS comentarios,
+          COALESCE(
+  (
+    SELECT json_agg(
+      json_build_object(
+        'id', c.id_comentario,
+        'comentario', c.comentario,
+        'creadoEn', c.creado_en,
+        'usuario', u.nombre
+      )
+      ORDER BY c.creado_en
+    )
+    FROM comentarios c
+    INNER JOIN usuarios u
+      ON u.id_usuario = c.id_usuario
+    WHERE c.id_actividad =
+      a.id_actividad
+  ),
+  '[]'::json
+) AS "comentariosDetalle",
 
           COALESCE(
   (
@@ -1198,6 +1212,112 @@ try {
         ok: false,
         message:
           'No fue posible actualizar la actividad.',
+      });
+    }
+  },
+);
+
+app.post(
+  '/api/activities/:id/comments',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idActividad = Number(
+        request.params.id,
+      );
+
+      const comentario =
+        typeof request.body?.comentario ===
+        'string'
+          ? request.body.comentario.trim()
+          : '';
+
+      if (
+        !Number.isInteger(idActividad) ||
+        idActividad <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La actividad no es válida.',
+        });
+      }
+
+      if (!comentario) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El comentario es obligatorio.',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          INSERT INTO comentarios (
+            id_actividad,
+            id_usuario,
+            comentario
+          )
+          SELECT
+            $1,
+            $2,
+            $3
+          WHERE EXISTS (
+            SELECT 1
+            FROM actividades
+            WHERE id_actividad = $1
+          )
+          RETURNING
+            id_comentario AS id,
+            comentario,
+            creado_en AS "creadoEn"
+        `,
+        [
+          idActividad,
+          request.auth.idUsuario,
+          comentario,
+        ],
+      );
+
+      if (result.rows.length === 0) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const userResult =
+        await pool.query(
+          `
+            SELECT nombre
+            FROM usuarios
+            WHERE id_usuario = $1
+          `,
+          [request.auth.idUsuario],
+        );
+
+      return response.status(201).json({
+        ok: true,
+        message:
+          'Comentario agregado correctamente.',
+        comentario: {
+          ...result.rows[0],
+          usuario:
+            userResult.rows[0]?.nombre ||
+            'Usuario',
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error agregando comentario:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible agregar el comentario.',
       });
     }
   },

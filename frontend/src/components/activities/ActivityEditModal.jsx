@@ -6,8 +6,10 @@ import {
 import {
   CalendarDays,
   Link,
+  MessageSquare,
   Plus,
   Save,
+  Send,
   Trash2,
   UserRound,
   X,
@@ -85,6 +87,16 @@ const [form, setForm] = useState({
   const [submitError, setSubmitError] =
     useState('');
 
+  const [comments, setComments] =
+  useState([]);
+
+const [newComment, setNewComment] =
+  useState('');
+
+const [sendingComment, setSendingComment] =
+  useState(false);
+
+
   useEffect(() => {
     if (!isOpen || !activity) {
       return;
@@ -112,6 +124,13 @@ const [form, setForm] = useState({
     
 });
 
+setComments(
+  Array.isArray(activity.comentariosDetalle)
+    ? activity.comentariosDetalle
+    : [],
+);
+
+setNewComment('');
 
     setErrors({});
     setTouched(INITIAL_TOUCHED);
@@ -275,6 +294,63 @@ function handleRemoveEvidence(
       onClose();
     }
   }
+
+  async function handleAddComment() {
+  const cleanComment =
+    newComment.trim();
+
+  if (!cleanComment) {
+    return;
+  }
+
+  try {
+    setSendingComment(true);
+
+    const response = await fetch(
+      `${
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:3001/api'
+      }/activities/${activity.id}/comments`,
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+
+          Authorization:
+            `Bearer ${localStorage.getItem(
+              'accessToken',
+            )}`,
+        },
+
+        body: JSON.stringify({
+          comentario: cleanComment,
+        }),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(
+        data.message ||
+          'No fue posible agregar el comentario.',
+      );
+    }
+
+    setComments((currentComments) => [
+      ...currentComments,
+      data.comentario,
+    ]);
+
+    setNewComment('');
+  } catch (error) {
+    setSubmitError(error.message);
+  } finally {
+    setSendingComment(false);
+  }
+}
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -463,6 +539,113 @@ function handleRemoveEvidence(
                 </p>
               )}
             </div>
+
+<div className="activity-comments">
+  <div className="activity-comments__header">
+    <div className="activity-comments__title">
+      <MessageSquare
+        size={20}
+        strokeWidth={1.8}
+      />
+
+      <strong>Comentarios</strong>
+
+      <span className="activity-comments__count">
+        {comments.length}
+      </span>
+    </div>
+  </div>
+
+  <div className="activity-comments__list">
+    {comments.length === 0 ? (
+      <div className="activity-comments__empty">
+        <MessageSquare
+          size={26}
+          strokeWidth={1.5}
+        />
+
+        <span>
+          Sin comentarios registrados
+        </span>
+      </div>
+    ) : (
+      comments.map((comment) => (
+        <article
+          className="activity-comment"
+          key={comment.id}
+        >
+          <div className="activity-comment__avatar">
+            {comment.usuario
+              ?.split(' ')
+              .map((word) => word[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase() || 'U'}
+          </div>
+
+          <div className="activity-comment__content">
+            <div className="activity-comment__top">
+              <strong>
+                {comment.usuario || 'Usuario'}
+              </strong>
+
+              <span>
+                {comment.creadoEn
+                  ? new Date(
+                      comment.creadoEn,
+                    ).toLocaleDateString(
+                      'es-MX',
+                      {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      },
+                    )
+                  : ''}
+              </span>
+            </div>
+
+            <p>{comment.comentario}</p>
+          </div>
+        </article>
+      ))
+    )}
+  </div>
+
+  <div className="activity-comments__form">
+    <input
+      type="text"
+      value={newComment}
+      onChange={(event) =>
+        setNewComment(event.target.value)
+      }
+      placeholder="Escribe un comentario..."
+      maxLength={1000}
+      disabled={sendingComment}
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Enter' &&
+          !event.shiftKey
+        ) {
+          event.preventDefault();
+          handleAddComment();
+        }
+      }}
+    />
+
+    <button
+      type="button"
+      onClick={handleAddComment}
+      disabled={
+        sendingComment ||
+        !newComment.trim()
+      }
+      aria-label="Enviar comentario"
+    >
+      <Send size={20} />
+    </button>
+  </div>
+</div>
 
             <div className="activity-field">
   <div className="activity-evidence-header">
@@ -691,6 +874,8 @@ function handleRemoveEvidence(
               )}
             </fieldset>
           </div>
+
+
 
           <footer className="activity-form__footer">
             <button
