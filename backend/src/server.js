@@ -607,6 +607,216 @@ app.get(
   },
 );
 
+/* =========================================
+   REGISTRAR ACTIVIDAD
+========================================= */
+
+app.post(
+  '/api/activities',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const titulo =
+        typeof request.body?.titulo === 'string'
+          ? request.body.titulo.trim()
+          : '';
+
+      const descripcion =
+        typeof request.body?.descripcion === 'string'
+          ? request.body.descripcion.trim()
+          : '';
+
+      const responsableRecibido =
+  request.body?.idResponsable;
+
+const idResponsable =
+  responsableRecibido === null ||
+  responsableRecibido === undefined ||
+  responsableRecibido === ''
+    ? null
+    : Number(responsableRecibido);
+
+      const fechaLimite =
+        typeof request.body?.fechaLimite === 'string'
+          ? request.body.fechaLimite.trim()
+          : '';
+
+      const prioridad =
+        typeof request.body?.prioridad === 'string'
+          ? request.body.prioridad
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const estatus =
+        typeof request.body?.estatus === 'string'
+          ? request.body.estatus
+              .trim()
+              .toUpperCase()
+          : 'PENDIENTE';
+
+      const errors = {};
+
+      if (!titulo) {
+        errors.titulo =
+          'El título es obligatorio.';
+      }
+
+      if (
+  idResponsable !== null &&
+  (
+    !Number.isInteger(idResponsable) ||
+    idResponsable <= 0
+  )
+) {
+  errors.idResponsable =
+    'Selecciona un responsable válido.';
+}
+
+      if (!fechaLimite) {
+        errors.fechaLimite =
+          'La fecha límite es obligatoria.';
+      }
+
+      const prioridadesPermitidas = [
+        'ALTA',
+        'MEDIA',
+        'BAJA',
+      ];
+
+      if (
+        !prioridadesPermitidas.includes(
+          prioridad,
+        )
+      ) {
+        errors.prioridad =
+          'La prioridad debe ser ALTA, MEDIA o BAJA.';
+      }
+
+      const estatusPermitidos = [
+        'PENDIENTE',
+        'EN_PROCESO',
+        'EN_REVISION',
+        'COMPLETADA',
+      ];
+
+      if (!estatusPermitidos.includes(estatus)) {
+        errors.estatus =
+          'El estatus seleccionado no es válido.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los campos de la actividad.',
+          errors,
+        });
+      }
+
+      let responsable = null;
+
+if (idResponsable !== null) {
+  const responsableResult =
+    await pool.query(
+      `
+        SELECT
+          id_usuario,
+          nombre,
+          correo
+        FROM usuarios
+        WHERE id_usuario = $1
+          AND estado = 'ACTIVO'
+        LIMIT 1
+      `,
+      [idResponsable],
+    );
+
+  responsable = responsableResult.rows[0];
+
+  if (!responsable) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'El responsable seleccionado no existe o está inactivo.',
+    });
+  }
+}
+
+      const result = await pool.query(
+        `
+          INSERT INTO actividades (
+            titulo,
+            descripcion,
+            id_creador,
+            id_responsable,
+            fecha_limite,
+            estatus,
+            prioridad
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7
+          )
+          RETURNING
+            id_actividad,
+            titulo,
+            descripcion,
+            id_creador,
+            id_responsable,
+            fecha_limite,
+            estatus,
+            prioridad,
+            creado_en,
+            actualizado_en
+        `,
+        [
+          titulo,
+          descripcion || null,
+          request.auth.idUsuario,
+          idResponsable,
+          fechaLimite,
+          estatus,
+          prioridad,
+        ],
+      );
+
+      return response.status(201).json({
+        ok: true,
+        message:
+          'Actividad registrada correctamente.',
+        actividad: {
+          ...result.rows[0],
+          responsable: responsable
+  ? {
+      id: responsable.id_usuario,
+      nombre: responsable.nombre,
+      correo: responsable.correo,
+    }
+  : null,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error registrando actividad:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'Ocurrió un error al registrar la actividad.',
+      });
+    }
+  },
+);
+
+
 app.use((_request, response) => {
   return response.status(404).json({
     ok: false,

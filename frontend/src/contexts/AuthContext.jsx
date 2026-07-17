@@ -1,55 +1,171 @@
-// src/context/AuthContext.jsx
-import { createContext, useContext, useState, useEffect } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children }) => {
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3001/api';
+
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Al cargar la app, verifica si hay una sesión guardada
-    const savedUser = localStorage.getItem('task_bloq_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    try {
+      const savedUser =
+        localStorage.getItem('task_bloq_user');
+
+      const accessToken =
+        sessionStorage.getItem(
+          'task_bloq_access_token',
+        );
+
+      if (savedUser && accessToken) {
+        setUser(JSON.parse(savedUser));
+      }
+    } catch (error) {
+      console.error(
+        'Error recuperando la sesión:',
+        error,
+      );
+
+      localStorage.removeItem(
+        'task_bloq_user',
+      );
+
+      sessionStorage.removeItem(
+        'task_bloq_access_token',
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const login = (email, password) => {
-    // Simulador de login con credenciales válidas y asignación de roles
-    // En el futuro, aquí harás tu petición fetch/axios a la API de TASK-BLOQ.
-    if (email === 'admin@taskbloq.com' && password === 'admin123') {
-      const userData = { email, role: 'ADMIN', name: 'Administrador TaskBloq' };
-      localStorage.setItem('task_bloq_user', JSON.stringify(userData));
+  async function login(email, password) {
+    try {
+      const response = await fetch(
+        `${API_URL}/auth/login`,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type': 'application/json',
+          },
+
+          credentials: 'include',
+
+          body: JSON.stringify({
+            correo: email.trim(),
+            contrasena: password,
+          }),
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok || !data.ok) {
+        return {
+          success: false,
+          message:
+            data.message ||
+            'El correo o la contraseña son incorrectos.',
+        };
+      }
+
+      const userData = {
+        id: data.usuario.id,
+        name: data.usuario.nombre,
+        email: data.usuario.correo,
+        role: data.usuario.rol,
+      };
+
+      localStorage.setItem(
+        'task_bloq_user',
+        JSON.stringify(userData),
+      );
+
+      sessionStorage.setItem(
+        'task_bloq_access_token',
+        data.accessToken,
+      );
+
       setUser(userData);
-      return { success: true };
-    } else if (email === 'user@taskbloq.com' && password === 'user123') {
-      const userData = { email, role: 'USER', name: 'Estudiante Académico' };
-      localStorage.setItem('task_bloq_user', JSON.stringify(userData));
-      setUser(userData);
-      return { success: true };
+
+      return {
+        success: true,
+        user: userData,
+      };
+    } catch (error) {
+      console.error(
+        'Error conectando con la API:',
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          'No fue posible conectar con el servidor.',
+      };
     }
+  }
 
-    return { success: false, message: 'El correo o la contraseña son incorrectos.' };
-  };
+  async function logout() {
+    try {
+      await fetch(
+        `${API_URL}/auth/logout`,
+        {
+          method: 'POST',
+          credentials: 'include',
+        },
+      );
+    } catch (error) {
+      console.error(
+        'Error cerrando sesión:',
+        error,
+      );
+    } finally {
+      localStorage.removeItem(
+        'task_bloq_user',
+      );
 
-  const logout = () => {
-    localStorage.removeItem('task_bloq_user');
-    setUser(null);
-  };
+      sessionStorage.removeItem(
+        'task_bloq_access_token',
+      );
+
+      setUser(null);
+    }
+  }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        isAuthenticated: Boolean(user),
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
+    throw new Error(
+      'useAuth debe utilizarse dentro de AuthProvider.',
+    );
   }
+
   return context;
-};
+}

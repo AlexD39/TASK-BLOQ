@@ -22,23 +22,51 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = async (event) => {
+  event.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
-      setError('Por favor, ingresa tu correo y contraseña.');
-      return;
+  setError('');
+
+  const cleanEmail = email.trim();
+
+  if (!cleanEmail || !password.trim()) {
+    setError(
+      'Por favor, ingresa tu correo y contraseña.',
+    );
+
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const result = await login(
+      cleanEmail,
+      password,
+    );
+
+    if (result?.success === false) {
+      setError(
+        result.message ||
+          'Correo electrónico o contraseña incorrectos.',
+      );
     }
+  } catch (loginError) {
+    console.error(
+      'Error al iniciar sesión:',
+      loginError,
+    );
 
-    // El login del contexto que valida las credenciales de demostración
-    const result = login(email, password);
-
-    if (!result.success) {
-      setError(result.message);
-    }
-  };
+    setError(
+      loginError?.message ||
+        'No fue posible iniciar sesión.',
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div style={styles.container}>
@@ -46,7 +74,11 @@ export default function LoginPage() {
         {/* Línea decorativa superior con degradado */}
         <div style={styles.topGradientBar}></div>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form
+  onSubmit={handleSubmit}
+  style={styles.form}
+  noValidate
+>
           {/* Logo "TB" */}
           <div style={styles.logoContainer}>
             <div style={styles.logoBox}>TB</div>
@@ -90,13 +122,23 @@ export default function LoginPage() {
           </div>
 
           {/* Botón de Iniciar Sesión con degradado */}
-          <button type="submit" style={styles.button}>
-            Iniciar sesión
-          </button>
+          <button
+  type="submit"
+  style={{
+    ...styles.button,
+    opacity: loading ? 0.7 : 1,
+    cursor: loading ? 'not-allowed' : 'pointer',
+  }}
+  disabled={loading}
+>
+  {loading
+    ? 'Iniciando sesión...'
+    : 'Iniciar sesión'}
+</button>
 
           {/* Caja de Credenciales de demostración */}
           <div style={styles.demoBox}>
-            <p style={styles.demoTitle}>Credenciales de de demostración</p>
+            <p style={styles.demoTitle}>Credenciales de demostración</p>
             <div style={styles.demoPill}>admin@taskbloq.edu</div>
             <div style={styles.demoPill}>TaskBloq2026</div>
           </div>
