@@ -176,6 +176,22 @@ function requireAccessToken(
   }
 }
 
+function requireAdminRole(
+  request,
+  response,
+  next,
+) {
+  if (request.auth?.rol !== 'ADMIN') {
+    return response.status(403).json({
+      ok: false,
+      message:
+        'Esta acción requiere permisos de administrador.',
+    });
+  }
+
+  return next();
+}
+
 /* =========================================
    HEALTH
 ========================================= */
@@ -608,6 +624,45 @@ app.get(
 );
 
 /* =========================================
+   LISTAR USUARIOS (RESPONSABLES DISPONIBLES)
+========================================= */
+
+app.get(
+  '/api/users',
+  requireAccessToken,
+  requireAdminRole,
+  async (_request, response) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id_usuario AS id,
+          nombre,
+          correo
+        FROM usuarios
+        WHERE estado = 'ACTIVO'
+        ORDER BY nombre ASC
+      `);
+
+      return response.status(200).json({
+        ok: true,
+        usuarios: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando usuarios:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible consultar los usuarios.',
+      });
+    }
+  },
+);
+
+/* =========================================
    REGISTRAR ACTIVIDAD
 ========================================= */
 
@@ -672,6 +727,17 @@ const idResponsable =
   errors.idResponsable =
     'Selecciona un responsable válido.';
 }
+
+      if (
+        idResponsable !== null &&
+        request.auth.rol !== 'ADMIN'
+      ) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'Solo un administrador puede asignar un responsable.',
+        });
+      }
 
       if (!fechaLimite) {
         errors.fechaLimite =
@@ -930,6 +996,22 @@ app.patch(
           ? request.body.descripcion.trim()
           : '';
 
+      const responsableProvisto =
+        Object.prototype.hasOwnProperty.call(
+          request.body || {},
+          'idResponsable',
+        );
+
+      const responsableRecibido =
+        request.body?.idResponsable;
+
+      const idResponsable =
+        responsableRecibido === null ||
+        responsableRecibido === undefined ||
+        responsableRecibido === ''
+          ? null
+          : Number(responsableRecibido);
+
       const fechaLimite =
         typeof request.body?.fechaLimite === 'string'
           ? request.body.fechaLimite.trim()
@@ -998,6 +1080,18 @@ if (evidenciaInvalida) {
           'El título no puede superar 180 caracteres.';
       }
 
+      if (
+        responsableProvisto &&
+        idResponsable !== null &&
+        (
+          !Number.isInteger(idResponsable) ||
+          idResponsable <= 0
+        )
+      ) {
+        errors.idResponsable =
+          'Selecciona un responsable válido.';
+      }
+
       if (!fechaLimite) {
         errors.fechaLimite =
           'La fecha límite es obligatoria.';
@@ -1043,7 +1137,8 @@ if (evidenciaInvalida) {
         `
           SELECT
             id_actividad,
-            id_creador
+            id_creador,
+            id_responsable
           FROM actividades
           WHERE id_actividad = $1
           LIMIT 1
@@ -1077,6 +1172,44 @@ if (evidenciaInvalida) {
         });
       }
 
+      if (responsableProvisto && !isAdmin) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'Solo un administrador puede asignar un responsable.',
+        });
+      }
+
+      let idResponsableFinal =
+        existingActivity.id_responsable ??
+        null;
+
+      if (responsableProvisto) {
+        if (idResponsable !== null) {
+          const responsableResult =
+            await pool.query(
+              `
+                SELECT id_usuario
+                FROM usuarios
+                WHERE id_usuario = $1
+                  AND estado = 'ACTIVO'
+                LIMIT 1
+              `,
+              [idResponsable],
+            );
+
+          if (!responsableResult.rows[0]) {
+            return response.status(400).json({
+              ok: false,
+              message:
+                'El responsable seleccionado no existe o está inactivo.',
+            });
+          }
+        }
+
+        idResponsableFinal = idResponsable;
+      }
+
       const client = await pool.connect();
 
 try {
@@ -1091,8 +1224,9 @@ try {
           descripcion = $2,
           fecha_limite = $3,
           prioridad = $4,
-          estatus = $5
-        WHERE id_actividad = $6
+          estatus = $5,
+          id_responsable = $6
+        WHERE id_actividad = $7
         RETURNING *
       )
       SELECT
@@ -1124,6 +1258,7 @@ try {
       fechaLimite,
       prioridad,
       estatus,
+      idResponsableFinal,
       idActividad,
     ],
   );
