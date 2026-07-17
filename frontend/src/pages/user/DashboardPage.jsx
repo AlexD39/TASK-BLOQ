@@ -1,3 +1,4 @@
+ feat/hu-comentarios-actividad
 import { useMemo, useState } from 'react';
 import {
   CalendarDays,
@@ -46,6 +47,17 @@ const STATUS_COLUMNS = [
 
 const INITIAL_ACTIVITIES = [];
 
+import {useEffect, useMemo, useState, } from 'react';
+import { CheckCircle2, ClipboardList, Clock3, Eye, LogOut, Plus,  RefreshCw, TrendingUp, } from 'lucide-react';
+import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import {createActivity, getActivities, updateActivity,} from '../../services/activities.service.js';
+import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
+import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
+
+import '../../styles/dashboard.css';
+ develop
+
 function getInitials(name = '') {
   return name
     .trim()
@@ -53,35 +65,6 @@ function getInitials(name = '') {
     .slice(0, 2)
     .map((word) => word.charAt(0).toUpperCase())
     .join('') || 'U';
-}
-
-function formatDate(dateValue) {
-  if (!dateValue) {
-    return 'Sin fecha';
-  }
-
-  const normalizedDate =
-    typeof dateValue === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
-      ? `${dateValue}T00:00:00`
-      : dateValue;
-
-  const parsedDate = new Date(normalizedDate);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    console.error(
-      'Fecha inválida recibida:',
-      dateValue,
-    );
-
-    return 'Fecha inválida';
-  }
-
-  return new Intl.DateTimeFormat('es-MX', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsedDate);
 }
 
 export default function DashboardPage() {
@@ -97,10 +80,161 @@ export default function DashboardPage() {
   const [newCommentText, setNewCommentText] = useState('');
 
   const [activities, setActivities] =
-    useState(INITIAL_ACTIVITIES);
+  useState([]);
 
+  const [activitiesLoading, setActivitiesLoading] =
+    useState(true);
+
+ feat/hu-comentarios-actividad
+
+  const [activitiesError, setActivitiesError] =
+  useState('');
+
+  const [selectedActivity,setSelectedActivity,] = 
+  useState(null);
+
+ const [isEditModalOpen, setIsEditModalOpen,] = 
+  useState(false);
+
+ develop
   const [notification, setNotification] =
     useState(null);
+
+    useEffect(() => {
+    let componentIsMounted = true;
+
+    async function loadActivities() {
+      try {
+        setActivitiesLoading(true);
+        setActivitiesError('');
+
+        const result = await getActivities();
+
+        if (componentIsMounted) {
+          setActivities(
+            Array.isArray(result.actividades)
+              ? result.actividades
+              : [],
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error cargando actividades:',
+          error,
+        );
+
+        if (componentIsMounted) {
+          setActivitiesError(
+            error.message ||
+              'No fue posible cargar el tablero.',
+          );
+        }
+      } finally {
+        if (componentIsMounted) {
+          setActivitiesLoading(false);
+        }
+      }
+    }
+
+    loadActivities();
+
+    return () => {
+      componentIsMounted = false;
+    };
+  }, []);
+
+  function handleOpenEditModal(activity) {
+    setSelectedActivity(activity);
+    setIsEditModalOpen(true);
+  }
+
+  function handleCloseEditModal() {
+    setIsEditModalOpen(false);
+    setSelectedActivity(null);
+  }
+
+  async function handleUpdateActivity(
+    activityId,
+    activityData,
+  ) {
+    setNotification(null);
+
+    try {
+      const result = await updateActivity(
+        activityId,
+        activityData,
+      );
+
+      const savedActivity =
+        result.actividad;
+
+      setActivities((currentActivities) =>
+        currentActivities.map((activity) => {
+          if (
+            String(activity.id) !==
+            String(
+              savedActivity.id_actividad,
+            )
+          ) {
+            return activity;
+          }
+
+          return {
+            ...activity,
+            id: savedActivity.id_actividad,
+            titulo: savedActivity.titulo,
+            descripcion:
+              savedActivity.descripcion || '',
+            responsable:
+              savedActivity.responsable?.nombre ||
+              activity.responsable ||
+              'Sin responsable',
+            fechaLimite:
+              typeof savedActivity.fecha_limite ===
+              'string'
+                ? savedActivity.fecha_limite.slice(
+                    0,
+                    10,
+                  )
+                : savedActivity.fecha_limite,
+            prioridad:
+              savedActivity.prioridad,
+            estatus:
+              savedActivity.estatus,
+          };
+        }),
+      );
+
+      handleCloseEditModal();
+
+      setNotification({
+        type: 'success',
+        message:
+          result.message ||
+          'Actividad actualizada correctamente.',
+      });
+
+      window.setTimeout(() => {
+        setNotification(null);
+      }, 4000);
+
+      return result;
+    } catch (error) {
+      console.error(
+        'Error actualizando actividad:',
+        error,
+      );
+
+      setNotification({
+        type: 'error',
+        message:
+          error.message ||
+          'No fue posible actualizar la actividad.',
+      });
+
+      throw error;
+    }
+  }
 
   const indicators = useMemo(() => {
     const total = activities.length;
@@ -461,6 +595,7 @@ export default function DashboardPage() {
           </article>
         </section>
 
+ feat/hu-comentarios-actividad
         <section
           className="taskboard-columns"
           aria-label="Tablero de actividades"
@@ -578,6 +713,15 @@ export default function DashboardPage() {
             );
           })}
         </section>
+
+       <ActivitiesBoard
+          activities={activities}
+          loading={activitiesLoading}
+          error={activitiesError}
+          onEditActivity={handleOpenEditModal}
+        />
+
+ develop
       </main>
 
       <ActivityFormModal
@@ -588,6 +732,7 @@ export default function DashboardPage() {
         onSubmit={handleCreateActivity}
       />
 
+ feat/hu-comentarios-actividad
       {/* 🛠️ MODAL DE DETALLE INTERACTIVO LOCAL CON SECCIÓN DE COMENTARIOS */}
       {selectedActivity && (
         <div className="modal-overlay" style={{
@@ -789,6 +934,15 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+<ActivityEditModal
+  isOpen={isEditModalOpen}
+  activity={selectedActivity}
+  onClose={handleCloseEditModal}
+  onSubmit={handleUpdateActivity}
+/>
+
+ develop
     </div>
   );
 }
