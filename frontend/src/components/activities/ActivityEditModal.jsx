@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react';
+import {
+  useEffect,
+  useState,
+} from 'react';
+
 import {
   CalendarDays,
   Save,
   UserRound,
   X,
 } from 'lucide-react';
+
+import {
+  validateActivityField,
+  validateActivityForm,
+} from '../../utils/activityValidation.js';
 
 import '../../styles/activity-modal.css';
 
@@ -27,16 +36,22 @@ const STATUS_OPTIONS = [
   },
 ];
 
+const INITIAL_TOUCHED = {
+  titulo: false,
+  descripcion: false,
+  fechaLimite: false,
+  prioridad: false,
+  estatus: false,
+};
+
 function normalizeDate(dateValue) {
-  if (!dateValue) {
+  if (
+    typeof dateValue !== 'string'
+  ) {
     return '';
   }
 
-  if (typeof dateValue === 'string') {
-    return dateValue.slice(0, 10);
-  }
-
-  return '';
+  return dateValue.slice(0, 10);
 }
 
 export default function ActivityEditModal({
@@ -50,38 +65,57 @@ export default function ActivityEditModal({
     descripcion: '',
     fechaLimite: '',
     prioridad: '',
-    estatus: 'PENDIENTE',
+    estatus: '',
   });
+
+  const [errors, setErrors] =
+    useState({});
+
+  const [touched, setTouched] =
+    useState(INITIAL_TOUCHED);
 
   const [saving, setSaving] =
     useState(false);
 
-  const [error, setError] =
+  const [submitError, setSubmitError] =
     useState('');
+
+  useEffect(() => {
+    if (!isOpen || !activity) {
+      return;
+    }
+
+    setForm({
+      titulo:
+        activity.titulo || '',
+      descripcion:
+        activity.descripcion || '',
+      fechaLimite:
+        normalizeDate(
+          activity.fechaLimite,
+        ),
+      prioridad:
+        activity.prioridad || '',
+      estatus:
+        activity.estatus || '',
+    });
+
+    setErrors({});
+    setTouched(INITIAL_TOUCHED);
+    setSubmitError('');
+    setSaving(false);
+  }, [isOpen, activity]);
 
   useEffect(() => {
     if (!isOpen || !activity) {
       return undefined;
     }
 
-    setForm({
-      titulo: activity.titulo || '',
-      descripcion: activity.descripcion || '',
-      fechaLimite: normalizeDate(
-        activity.fechaLimite,
-      ),
-      prioridad:
-        activity.prioridad || 'MEDIA',
-      estatus:
-        activity.estatus || 'PENDIENTE',
-    });
-
-    setError('');
-
     const previousOverflow =
       document.body.style.overflow;
 
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow =
+      'hidden';
 
     function handleKeyDown(event) {
       if (
@@ -109,8 +143,8 @@ export default function ActivityEditModal({
   }, [
     isOpen,
     activity,
-    onClose,
     saving,
+    onClose,
   ]);
 
   if (!isOpen || !activity) {
@@ -118,17 +152,59 @@ export default function ActivityEditModal({
   }
 
   function handleChange(event) {
-    const { name, value } = event.target;
+    const { name, value } =
+      event.target;
 
     setForm((currentForm) => ({
       ...currentForm,
       [name]: value,
     }));
+
+    setTouched((currentTouched) => ({
+      ...currentTouched,
+      [name]: true,
+    }));
+
+    setErrors((currentErrors) => ({
+      ...currentErrors,
+      [name]: validateActivityField(
+        name,
+        value,
+      ),
+    }));
+
+    setSubmitError('');
+  }
+
+  function handleBlur(event) {
+    const { name, value } =
+      event.target;
+
+    setTouched((currentTouched) => ({
+      ...currentTouched,
+      [name]: true,
+    }));
+
+    setErrors((currentErrors) => ({
+      ...currentErrors,
+      [name]: validateActivityField(
+        name,
+        value,
+      ),
+    }));
+  }
+
+  function hasError(fieldName) {
+    return Boolean(
+      touched[fieldName] &&
+      errors[fieldName],
+    );
   }
 
   function handleBackdropClick(event) {
     if (
-      event.target === event.currentTarget &&
+      event.target ===
+        event.currentTarget &&
       !saving
     ) {
       onClose();
@@ -138,26 +214,50 @@ export default function ActivityEditModal({
   async function handleSubmit(event) {
     event.preventDefault();
 
-    setError('');
+    setSubmitError('');
 
     const cleanData = {
       titulo: form.titulo.trim(),
       descripcion:
         form.descripcion.trim(),
-      fechaLimite: form.fechaLimite,
-      prioridad: form.prioridad,
-      estatus: form.estatus,
+      fechaLimite:
+        form.fechaLimite,
+      prioridad:
+        form.prioridad,
+      estatus:
+        form.estatus,
     };
 
+    const formErrors =
+      validateActivityForm(cleanData);
+
+    setTouched({
+      titulo: true,
+      descripcion: true,
+      fechaLimite: true,
+      prioridad: true,
+      estatus: true,
+    });
+
+    setErrors(formErrors);
+
     if (
-      !cleanData.titulo ||
-      !cleanData.fechaLimite ||
-      !cleanData.prioridad ||
-      !cleanData.estatus
+      Object.keys(formErrors).length > 0
     ) {
-      setError(
-        'Completa todos los campos obligatorios.',
+      setSubmitError(
+        'Revisa los campos marcados antes de guardar.',
       );
+
+      const firstInvalidField =
+        Object.keys(formErrors)[0];
+
+      window.setTimeout(() => {
+        document
+          .querySelector(
+            `[name="${firstInvalidField}"]`,
+          )
+          ?.focus();
+      }, 0);
 
       return;
     }
@@ -169,9 +269,9 @@ export default function ActivityEditModal({
         activity.id,
         cleanData,
       );
-    } catch (submitError) {
-      setError(
-        submitError.message ||
+    } catch (error) {
+      setSubmitError(
+        error.message ||
           'No fue posible actualizar la actividad.',
       );
     } finally {
@@ -212,18 +312,25 @@ export default function ActivityEditModal({
         <form
           className="activity-form"
           onSubmit={handleSubmit}
+          noValidate
         >
           <div className="activity-form__body">
-            {error && (
+            {submitError && (
               <div
                 className="activity-form-error"
                 role="alert"
               >
-                {error}
+                {submitError}
               </div>
             )}
 
-            <div className="activity-field">
+            <div
+              className={`activity-field ${
+                hasError('titulo')
+                  ? 'activity-field--error'
+                  : ''
+              }`}
+            >
               <label htmlFor="edit-titulo">
                 Título <span>*</span>
               </label>
@@ -234,13 +341,28 @@ export default function ActivityEditModal({
                 type="text"
                 value={form.titulo}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 maxLength={180}
-                required
+                aria-invalid={
+                  hasError('titulo')
+                }
                 autoFocus
               />
+
+              {hasError('titulo') && (
+                <p className="activity-field__error">
+                  {errors.titulo}
+                </p>
+              )}
             </div>
 
-            <div className="activity-field">
+            <div
+              className={`activity-field ${
+                hasError('descripcion')
+                  ? 'activity-field--error'
+                  : ''
+              }`}
+            >
               <label htmlFor="edit-descripcion">
                 Descripción
               </label>
@@ -250,9 +372,26 @@ export default function ActivityEditModal({
                 name="descripcion"
                 value={form.descripcion}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 rows={4}
+                maxLength={1000}
                 placeholder="Descripción de la actividad"
+                aria-invalid={
+                  hasError('descripcion')
+                }
               />
+
+              <div className="activity-field__meta">
+                <span>
+                  {form.descripcion.length}/1000
+                </span>
+              </div>
+
+              {hasError('descripcion') && (
+                <p className="activity-field__error">
+                  {errors.descripcion}
+                </p>
+              )}
             </div>
 
             <div className="activity-field">
@@ -278,7 +417,13 @@ export default function ActivityEditModal({
             </div>
 
             <div className="activity-form__row">
-              <div className="activity-field">
+              <div
+                className={`activity-field ${
+                  hasError('fechaLimite')
+                    ? 'activity-field--error'
+                    : ''
+                }`}
+              >
                 <label htmlFor="edit-fecha">
                   Fecha límite <span>*</span>
                 </label>
@@ -295,12 +440,31 @@ export default function ActivityEditModal({
                     type="date"
                     value={form.fechaLimite}
                     onChange={handleChange}
-                    required
+                    onBlur={handleBlur}
+                    aria-invalid={
+                      hasError(
+                        'fechaLimite',
+                      )
+                    }
                   />
                 </div>
+
+                {hasError(
+                  'fechaLimite',
+                ) && (
+                  <p className="activity-field__error">
+                    {errors.fechaLimite}
+                  </p>
+                )}
               </div>
 
-              <div className="activity-field">
+              <div
+                className={`activity-field ${
+                  hasError('prioridad')
+                    ? 'activity-field--error'
+                    : ''
+                }`}
+              >
                 <label htmlFor="edit-prioridad">
                   Prioridad <span>*</span>
                 </label>
@@ -310,8 +474,15 @@ export default function ActivityEditModal({
                   name="prioridad"
                   value={form.prioridad}
                   onChange={handleChange}
-                  required
+                  onBlur={handleBlur}
+                  aria-invalid={
+                    hasError('prioridad')
+                  }
                 >
+                  <option value="">
+                    Seleccionar...
+                  </option>
+
                   <option value="ALTA">
                     Alta
                   </option>
@@ -324,10 +495,22 @@ export default function ActivityEditModal({
                     Baja
                   </option>
                 </select>
+
+                {hasError('prioridad') && (
+                  <p className="activity-field__error">
+                    {errors.prioridad}
+                  </p>
+                )}
               </div>
             </div>
 
-            <fieldset className="activity-status">
+            <fieldset
+              className={`activity-status ${
+                hasError('estatus')
+                  ? 'activity-status--error'
+                  : ''
+              }`}
+            >
               <legend>
                 Estatus <span>*</span>
               </legend>
@@ -364,6 +547,12 @@ export default function ActivityEditModal({
                   ),
                 )}
               </div>
+
+              {hasError('estatus') && (
+                <p className="activity-field__error">
+                  {errors.estatus}
+                </p>
+              )}
             </fieldset>
           </div>
 

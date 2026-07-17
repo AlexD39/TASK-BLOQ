@@ -437,3 +437,65 @@
   cursor: not-allowed;
   opacity: 0.65;
 }
+
+.activity-field--error > input,
+.activity-field--error > textarea,
+.activity-field--error > select,
+.activity-field--error .activity-input-icon {
+  border-color: #ef4444;
+}
+
+.activity-field--error > input:focus,
+.activity-field--error > textarea:focus,
+.activity-field--error > select:focus,
+.activity-field--error .activity-input-icon:focus-within {
+  border-color: #dc2626;
+
+  box-shadow:
+    0 0 0 4px rgba(239, 68, 68, 0.12);
+}
+
+.activity-field__error {
+  margin: 6px 0 0;
+
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.activity-field__meta {
+  display: flex;
+  justify-content: flex-end;
+
+  margin-top: 5px;
+
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.activity-status--error {
+  border-color: #ef4444;
+}
+
+.activity-status--error legend {
+  color: #dc2626;
+}
+
+.activity-form-error {
+  padding: 13px 15px;
+
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 650;
+
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 13px;
+}
+
+.activity-button:disabled,
+.activity-modal__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
