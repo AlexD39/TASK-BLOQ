@@ -16,7 +16,10 @@ import {
 
 import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { createActivity } from '../../services/activities.service.js';
+import {
+  createActivity,
+  updateActivityStatus,
+} from '../../services/activities.service.js';
 import '../../styles/dashboard.css';
 
 
@@ -199,6 +202,65 @@ export default function DashboardPage() {
     });
   }
 }
+
+async function handleStatusChange(
+    activityId,
+    newStatus,
+  ) {
+    const previousActivities = activities;
+
+    const previousActivity =
+      previousActivities.find(
+        (activity) => activity.id === activityId,
+      );
+
+    if (
+      !previousActivity ||
+      previousActivity.estatus === newStatus
+    ) {
+      return;
+    }
+
+    setActivities((currentActivities) =>
+      currentActivities.map((activity) =>
+        activity.id === activityId
+          ? { ...activity, estatus: newStatus }
+          : activity,
+      ),
+    );
+
+    try {
+      const result = await updateActivityStatus(
+        activityId,
+        newStatus,
+      );
+
+      setNotification({
+        type: 'success',
+        message:
+          result.message ||
+          'Estatus actualizado correctamente.',
+      });
+
+      window.setTimeout(() => {
+        setNotification(null);
+      }, 4000);
+    } catch (error) {
+      console.error(
+        'Error actualizando estatus:',
+        error,
+      );
+
+      setActivities(previousActivities);
+
+      setNotification({
+        type: 'error',
+        message:
+          error.message ||
+          'No fue posible actualizar el estatus.',
+      });
+    }
+  }
 
   function getActivitiesByStatus(status) {
     return activities.filter(
@@ -513,6 +575,44 @@ export default function DashboardPage() {
                               </span>
                             </div>
                           )}
+
+                          <div className="activity-card__status">
+                            <label
+                              htmlFor={`estatus-${activity.id}`}
+                            >
+                              Estatus
+                            </label>
+
+                            <select
+                              id={`estatus-${activity.id}`}
+                              className="status-select"
+                              value={activity.estatus}
+                              onChange={(event) =>
+                                handleStatusChange(
+                                  activity.id,
+                                  event.target
+                                    .value,
+                                )
+                              }
+                            >
+                              {STATUS_COLUMNS.map(
+                                (statusOption) => (
+                                  <option
+                                    key={
+                                      statusOption.value
+                                    }
+                                    value={
+                                      statusOption.value
+                                    }
+                                  >
+                                    {
+                                      statusOption.label
+                                    }
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </div>
 
                           <footer className="activity-card__footer">
                             <button type="button">

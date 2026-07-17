@@ -49,3 +49,46 @@ export async function createActivity(
 
   return data;
 }
+
+export async function updateActivityStatus(
+  activityId,
+  estatus,
+) {
+  const accessToken =
+    sessionStorage.getItem(
+      'task_bloq_access_token',
+    );
+
+  if (!accessToken) {
+    throw new Error(
+      'La sesión no es válida. Inicia sesión nuevamente.',
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/activities/${activityId}/status`,
+    {
+      method: 'PATCH',
+
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+
+      body: JSON.stringify({ estatus }),
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      data.message ||
+        'No fue posible actualizar el estatus de la actividad.',
+    );
+  }
+
+  return data;
+}

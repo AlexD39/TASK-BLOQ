@@ -816,6 +816,100 @@ if (idResponsable !== null) {
   },
 );
 
+/* =========================================
+   GUARDAR CAMBIO DE ESTATUS (HU-08.03)
+========================================= */
+
+app.patch(
+  '/api/activities/:id/status',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idActividad = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idActividad) ||
+        idActividad <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador de la actividad no es válido.',
+        });
+      }
+
+      const estatus =
+        typeof request.body?.estatus === 'string'
+          ? request.body.estatus
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const estatusPermitidos = [
+        'PENDIENTE',
+        'EN_PROCESO',
+        'EN_REVISION',
+        'COMPLETADA',
+      ];
+
+      if (!estatusPermitidos.includes(estatus)) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El estatus seleccionado no es válido.',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE actividades
+          SET estatus = $1
+          WHERE id_actividad = $2
+          RETURNING
+            id_actividad,
+            titulo,
+            descripcion,
+            id_creador,
+            id_responsable,
+            fecha_limite,
+            estatus,
+            prioridad,
+            creado_en,
+            actualizado_en
+        `,
+        [estatus, idActividad],
+      );
+
+      if (result.rows.length === 0) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no fue encontrada.',
+        });
+      }
+
+      return response.status(200).json({
+        ok: true,
+        message:
+          'Estatus actualizado correctamente.',
+        actividad: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando estatus de actividad:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'Ocurrió un error al actualizar el estatus de la actividad.',
+      });
+    }
+  },
+);
 
 app.use((_request, response) => {
   return response.status(404).json({

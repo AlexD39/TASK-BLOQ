@@ -643,6 +643,47 @@
   color: #00a86b;
 }
 
+.activity-card__status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  margin-top: 12px;
+}
+
+.activity-card__status label {
+  color: #6d809d;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-select {
+  padding: 7px 10px;
+
+  color: #1f2a44;
+  font-size: 13px;
+  font-weight: 600;
+
+  background-color: #f4f7fb;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+
+  cursor: pointer;
+}
+
+.status-select:hover {
+  border-color: #1769ff;
+}
+
+.status-select:focus {
+  outline: none;
+
+  border-color: #1769ff;
+  box-shadow: 0 0 0 3px rgba(23, 105, 255, 0.15);
+}
+
 .activity-card__footer {
   display: flex;
   justify-content: flex-end;
