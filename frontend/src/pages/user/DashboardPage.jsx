@@ -1,49 +1,12 @@
-import { useMemo, useState } from 'react';
-import {
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardList,
-  Clock3,
-  Eye,
-  LogOut,
-  MessageSquare,
-  Paperclip,
-  Plus,
-  RefreshCw,
-  TrendingUp,
-} from 'lucide-react';
-
+import {useEffect, useMemo, useState, } from 'react';
+import { CheckCircle2, ClipboardList, Clock3, Eye, LogOut, Plus,  RefreshCw, TrendingUp, } from 'lucide-react';
 import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { createActivity } from '../../services/activities.service.js';
+import {createActivity, getActivities, updateActivity,} from '../../services/activities.service.js';
+import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
+import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
+
 import '../../styles/dashboard.css';
-
-
-const STATUS_COLUMNS = [
-  {
-    value: 'PENDIENTE',
-    label: 'Pendiente',
-    className: 'pending',
-  },
-  {
-    value: 'EN_PROCESO',
-    label: 'En proceso',
-    className: 'in-progress',
-  },
-  {
-    value: 'EN_REVISION',
-    label: 'En revisión',
-    className: 'in-review',
-  },
-  {
-    value: 'COMPLETADA',
-    label: 'Completada',
-    className: 'completed',
-  },
-];
-
-const INITIAL_ACTIVITIES = [];
 
 function getInitials(name = '') {
   return name
@@ -54,35 +17,6 @@ function getInitials(name = '') {
     .join('') || 'U';
 }
 
-function formatDate(dateValue) {
-  if (!dateValue) {
-    return 'Sin fecha';
-  }
-
-  const normalizedDate =
-    typeof dateValue === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
-      ? `${dateValue}T00:00:00`
-      : dateValue;
-
-  const parsedDate = new Date(normalizedDate);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    console.error(
-      'Fecha inválida recibida:',
-      dateValue,
-    );
-
-    return 'Fecha inválida';
-  }
-
-  return new Intl.DateTimeFormat('es-MX', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsedDate);
-}
-
 export default function DashboardPage() {
   const { user, logout } = useAuth();
 
@@ -90,10 +24,158 @@ export default function DashboardPage() {
     useState(false);
 
   const [activities, setActivities] =
-    useState(INITIAL_ACTIVITIES);
+  useState([]);
 
-    const [notification, setNotification] =
+  const [activitiesLoading, setActivitiesLoading] =
+    useState(true);
+
+  const [activitiesError, setActivitiesError] =
+  useState('');
+
+  const [selectedActivity,setSelectedActivity,] = 
+  useState(null);
+
+ const [isEditModalOpen, setIsEditModalOpen,] = 
+  useState(false);
+
+  const [notification, setNotification] =
     useState(null);
+
+    useEffect(() => {
+    let componentIsMounted = true;
+
+    async function loadActivities() {
+      try {
+        setActivitiesLoading(true);
+        setActivitiesError('');
+
+        const result = await getActivities();
+
+        if (componentIsMounted) {
+          setActivities(
+            Array.isArray(result.actividades)
+              ? result.actividades
+              : [],
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error cargando actividades:',
+          error,
+        );
+
+        if (componentIsMounted) {
+          setActivitiesError(
+            error.message ||
+              'No fue posible cargar el tablero.',
+          );
+        }
+      } finally {
+        if (componentIsMounted) {
+          setActivitiesLoading(false);
+        }
+      }
+    }
+
+    loadActivities();
+
+    return () => {
+      componentIsMounted = false;
+    };
+  }, []);
+
+  function handleOpenEditModal(activity) {
+    setSelectedActivity(activity);
+    setIsEditModalOpen(true);
+  }
+
+  function handleCloseEditModal() {
+    setIsEditModalOpen(false);
+    setSelectedActivity(null);
+  }
+
+  async function handleUpdateActivity(
+    activityId,
+    activityData,
+  ) {
+    setNotification(null);
+
+    try {
+      const result = await updateActivity(
+        activityId,
+        activityData,
+      );
+
+      const savedActivity =
+        result.actividad;
+
+      setActivities((currentActivities) =>
+        currentActivities.map((activity) => {
+          if (
+            String(activity.id) !==
+            String(
+              savedActivity.id_actividad,
+            )
+          ) {
+            return activity;
+          }
+
+          return {
+            ...activity,
+            id: savedActivity.id_actividad,
+            titulo: savedActivity.titulo,
+            descripcion:
+              savedActivity.descripcion || '',
+            responsable:
+              savedActivity.responsable?.nombre ||
+              activity.responsable ||
+              'Sin responsable',
+            fechaLimite:
+              typeof savedActivity.fecha_limite ===
+              'string'
+                ? savedActivity.fecha_limite.slice(
+                    0,
+                    10,
+                  )
+                : savedActivity.fecha_limite,
+            prioridad:
+              savedActivity.prioridad,
+            estatus:
+              savedActivity.estatus,
+          };
+        }),
+      );
+
+      handleCloseEditModal();
+
+      setNotification({
+        type: 'success',
+        message:
+          result.message ||
+          'Actividad actualizada correctamente.',
+      });
+
+      window.setTimeout(() => {
+        setNotification(null);
+      }, 4000);
+
+      return result;
+    } catch (error) {
+      console.error(
+        'Error actualizando actividad:',
+        error,
+      );
+
+      setNotification({
+        type: 'error',
+        message:
+          error.message ||
+          'No fue posible actualizar la actividad.',
+      });
+
+      throw error;
+    }
+  }
 
   const indicators = useMemo(() => {
     const total = activities.length;
@@ -419,119 +501,13 @@ export default function DashboardPage() {
           </article>
         </section>
 
-        <section
-          className="taskboard-columns"
-          aria-label="Tablero de actividades"
-        >
-          {STATUS_COLUMNS.map((column) => {
-            const columnActivities =
-              getActivitiesByStatus(column.value);
+       <ActivitiesBoard
+          activities={activities}
+          loading={activitiesLoading}
+          error={activitiesError}
+          onEditActivity={handleOpenEditModal}
+        />
 
-            return (
-              <article
-                key={column.value}
-                className={`board-column board-column--${column.className}`}
-              >
-                <header className="board-column__header">
-                  <div>
-                    <span className="board-column__dot" />
-
-                    <h2>{column.label}</h2>
-                  </div>
-
-                  <span className="board-column__count">
-                    {columnActivities.length}
-                  </span>
-                </header>
-
-                <div className="board-column__content">
-                  {columnActivities.length === 0 ? (
-                    <div className="board-column__empty">
-                      No hay actividades
-                    </div>
-                  ) : (
-                    columnActivities.map(
-                      (activity) => (
-                        <article
-                          key={activity.id}
-                          className="activity-card"
-                        >
-                          <div className="activity-card__top">
-                            <span
-                              className={`priority-badge priority-badge--${activity.prioridad.toLowerCase()}`}
-                            >
-                              <span />
-                              {activity.prioridad
-                                .charAt(0)
-                                .toUpperCase() +
-                                activity.prioridad
-                                  .slice(1)
-                                  .toLowerCase()}
-                            </span>
-
-                            {activity.comentarios > 0 && (
-                              <span className="activity-card__comments">
-                                <MessageSquare
-                                  size={16}
-                                />
-                                {activity.comentarios}
-                              </span>
-                            )}
-                          </div>
-
-                          <h3>{activity.titulo}</h3>
-
-                          <div className="activity-card__person">
-                            <span className="activity-avatar">
-                              {getInitials(
-                                activity.responsable,
-                              )}
-                            </span>
-
-                            <span>
-                              {activity.responsable}
-                            </span>
-                          </div>
-
-                          <div className="activity-card__date">
-                            <CalendarDays size={16} />
-
-                            <span>
-                              {formatDate(
-                                activity.fechaLimite,
-                              )}
-                            </span>
-                          </div>
-
-                          {activity.evidencias > 0 && (
-                            <div className="activity-card__evidence">
-                              <Paperclip size={16} />
-
-                              <span>
-                                {activity.evidencias}{' '}
-                                evidencia(s)
-                              </span>
-                            </div>
-                          )}
-
-                          <footer className="activity-card__footer">
-                            <button type="button">
-                              Ver detalle
-
-                              <ChevronRight
-                                size={17}
-                              />
-                            </button>
-                          </footer>
-                        </article>
-                      ),
-                    )
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </section>
       </main>
 
       <ActivityFormModal
@@ -541,6 +517,14 @@ export default function DashboardPage() {
         }
         onSubmit={handleCreateActivity}
       />
+
+<ActivityEditModal
+  isOpen={isEditModalOpen}
+  activity={selectedActivity}
+  onClose={handleCloseEditModal}
+  onSubmit={handleUpdateActivity}
+/>
+
     </div>
   );
 }
