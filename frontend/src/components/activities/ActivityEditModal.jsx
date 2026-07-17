@@ -5,7 +5,10 @@ import {
 
 import {
   CalendarDays,
+  Link,
+  Plus,
   Save,
+  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -60,13 +63,15 @@ export default function ActivityEditModal({
   onClose,
   onSubmit,
 }) {
-  const [form, setForm] = useState({
-    titulo: '',
-    descripcion: '',
-    fechaLimite: '',
-    prioridad: '',
-    estatus: '',
-  });
+
+const [form, setForm] = useState({
+  titulo: '',
+  descripcion: '',
+  fechaLimite: '',
+  prioridad: '',
+  estatus: '',
+  evidencias: [''],
+});
 
   const [errors, setErrors] =
     useState({});
@@ -86,19 +91,27 @@ export default function ActivityEditModal({
     }
 
     setForm({
-      titulo:
-        activity.titulo || '',
-      descripcion:
-        activity.descripcion || '',
-      fechaLimite:
-        normalizeDate(
-          activity.fechaLimite,
-        ),
-      prioridad:
-        activity.prioridad || '',
-      estatus:
-        activity.estatus || '',
-    });
+  titulo: activity.titulo || '',
+  descripcion: activity.descripcion || '',
+  fechaLimite: normalizeDate(
+    activity.fechaLimite,
+  ),
+  prioridad: activity.prioridad || '',
+  estatus: activity.estatus || '',
+
+  evidencias:
+  Array.isArray(activity.evidencias) &&
+  activity.evidencias.length > 0
+    ? activity.evidencias.map(
+        (evidencia) =>
+          typeof evidencia === 'string'
+            ? evidencia
+            : evidencia.enlace || '',
+      )
+    : [''],
+    
+});
+
 
     setErrors({});
     setTouched(INITIAL_TOUCHED);
@@ -176,6 +189,58 @@ export default function ActivityEditModal({
     setSubmitError('');
   }
 
+  function handleEvidenceChange(
+  evidenceIndex,
+  value,
+) {
+  setForm((currentForm) => ({
+    ...currentForm,
+
+    evidencias:
+      currentForm.evidencias.map(
+        (evidencia, index) =>
+          index === evidenceIndex
+            ? value
+            : evidencia,
+      ),
+  }));
+
+  setSubmitError('');
+}
+
+function handleAddEvidence() {
+  setForm((currentForm) => ({
+    ...currentForm,
+
+    evidencias: [
+      ...currentForm.evidencias,
+      '',
+    ],
+  }));
+}
+
+function handleRemoveEvidence(
+  evidenceIndex,
+) {
+  setForm((currentForm) => {
+    const updatedEvidences =
+      currentForm.evidencias.filter(
+        (_, index) =>
+          index !== evidenceIndex,
+      );
+
+    return {
+      ...currentForm,
+
+      evidencias:
+        updatedEvidences.length > 0
+          ? updatedEvidences
+          : [''],
+    };
+  });
+}
+
+
   function handleBlur(event) {
     const { name, value } =
       event.target;
@@ -226,6 +291,11 @@ export default function ActivityEditModal({
         form.prioridad,
       estatus:
         form.estatus,
+      evidencias: form.evidencias
+  .map((evidencia) =>
+    evidencia.trim(),
+  )
+  .filter(Boolean),  
     };
 
     const formErrors =
@@ -393,6 +463,72 @@ export default function ActivityEditModal({
                 </p>
               )}
             </div>
+
+            <div className="activity-field">
+  <div className="activity-evidence-header">
+    <label>
+      Evidencias
+    </label>
+
+    <button
+      type="button"
+      className="activity-evidence-add"
+      onClick={handleAddEvidence}
+      disabled={saving}
+    >
+      <Plus size={17} />
+      Agregar evidencia
+    </button>
+  </div>
+
+  <div className="activity-evidence-list">
+    {form.evidencias.map(
+      (evidencia, index) => (
+        <div
+          className="activity-evidence-item"
+          key={index}
+        >
+          <div className="activity-input-icon">
+            <Link
+              size={20}
+              strokeWidth={1.7}
+            />
+
+            <input
+              type="url"
+              value={evidencia}
+              onChange={(event) =>
+                handleEvidenceChange(
+                  index,
+                  event.target.value,
+                )
+              }
+              placeholder="https://ejemplo.com/evidencia"
+              disabled={saving}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="activity-evidence-remove"
+            onClick={() =>
+              handleRemoveEvidence(index)
+            }
+            disabled={saving}
+            aria-label="Eliminar evidencia"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+      ),
+    )}
+  </div>
+
+  <small className="activity-field__help">
+    Puedes agregar enlaces a documentos,
+    imágenes o archivos de evidencia.
+  </small>
+</div>
 
             <div className="activity-field">
               <label>
