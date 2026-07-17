@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -18,6 +18,7 @@ import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
   createActivity,
+  getActivities,
   updateActivityStatus,
 } from '../../services/activities.service.js';
 import '../../styles/dashboard.css';
@@ -97,6 +98,59 @@ export default function DashboardPage() {
 
     const [notification, setNotification] =
     useState(null);
+
+    useEffect(() => {
+    let isMounted = true;
+
+    async function loadActivities() {
+      try {
+        const result = await getActivities();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const loadedActivities =
+          result.actividades.map((savedActivity) => ({
+            id: savedActivity.id_actividad,
+            titulo: savedActivity.titulo,
+            descripcion:
+              savedActivity.descripcion || '',
+            responsable:
+              savedActivity.responsable?.nombre ||
+              'Sin responsable',
+            fechaLimite:
+              typeof savedActivity.fecha_limite === 'string'
+                ? savedActivity.fecha_limite.slice(0, 10)
+                : savedActivity.fecha_limite,
+            prioridad: savedActivity.prioridad,
+            estatus: savedActivity.estatus,
+            comentarios: 0,
+            evidencias: 0,
+          }));
+
+        setActivities(loadedActivities);
+      } catch (error) {
+        console.error(
+          'Error cargando actividades:',
+          error,
+        );
+
+        setNotification({
+          type: 'error',
+          message:
+            error.message ||
+            'No fue posible cargar las actividades.',
+        });
+      }
+    }
+
+    loadActivities();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const indicators = useMemo(() => {
     const total = activities.length;

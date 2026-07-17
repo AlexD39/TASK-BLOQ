@@ -92,3 +92,40 @@ export async function updateActivityStatus(
 
   return data;
 }
+
+export async function getActivities() {
+  const accessToken =
+    sessionStorage.getItem(
+      'task_bloq_access_token',
+    );
+
+  if (!accessToken) {
+    throw new Error(
+      'La sesión no es válida. Inicia sesión nuevamente.',
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/activities`,
+    {
+      method: 'GET',
+
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      data.message ||
+        'No fue posible obtener las actividades.',
+    );
+  }
+
+  return data;
+}

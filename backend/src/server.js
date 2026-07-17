@@ -608,6 +608,76 @@ app.get(
 );
 
 /* =========================================
+   LISTAR ACTIVIDADES 
+========================================= */
+
+app.get(
+  '/api/activities',
+  requireAccessToken,
+  async (_request, response) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          a.id_actividad,
+          a.titulo,
+          a.descripcion,
+          a.id_creador,
+          a.id_responsable,
+          a.fecha_limite,
+          a.estatus,
+          a.prioridad,
+          a.creado_en,
+          a.actualizado_en,
+          r.nombre AS responsable_nombre,
+          r.correo AS responsable_correo
+        FROM actividades a
+        LEFT JOIN usuarios r
+          ON r.id_usuario = a.id_responsable
+        ORDER BY a.creado_en DESC
+      `);
+
+      const actividades = result.rows.map(
+        (row) => ({
+          id_actividad: row.id_actividad,
+          titulo: row.titulo,
+          descripcion: row.descripcion,
+          id_creador: row.id_creador,
+          id_responsable: row.id_responsable,
+          fecha_limite: row.fecha_limite,
+          estatus: row.estatus,
+          prioridad: row.prioridad,
+          creado_en: row.creado_en,
+          actualizado_en: row.actualizado_en,
+          responsable: row.id_responsable
+            ? {
+                id: row.id_responsable,
+                nombre: row.responsable_nombre,
+                correo: row.responsable_correo,
+              }
+            : null,
+        }),
+      );
+
+      return response.status(200).json({
+        ok: true,
+        actividades,
+      });
+    } catch (error) {
+      console.error(
+        'Error listando actividades:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'Ocurrió un error al obtener las actividades.',
+      });
+    }
+  },
+);
+
+/* =========================================
    REGISTRAR ACTIVIDAD
 ========================================= */
 
