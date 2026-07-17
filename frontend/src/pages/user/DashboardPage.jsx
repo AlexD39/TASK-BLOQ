@@ -1,263 +1,546 @@
-// src/pages/user/DashboardPage.jsx
+import { useMemo, useState } from 'react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Clock3,
+  Eye,
+  LogOut,
+  MessageSquare,
+  Paperclip,
+  Plus,
+  RefreshCw,
+  TrendingUp,
+} from 'lucide-react';
+
+import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { createActivity } from '../../services/activities.service.js';
+import '../../styles/dashboard.css';
+
+
+const STATUS_COLUMNS = [
+  {
+    value: 'PENDIENTE',
+    label: 'Pendiente',
+    className: 'pending',
+  },
+  {
+    value: 'EN_PROCESO',
+    label: 'En proceso',
+    className: 'in-progress',
+  },
+  {
+    value: 'EN_REVISION',
+    label: 'En revisión',
+    className: 'in-review',
+  },
+  {
+    value: 'COMPLETADA',
+    label: 'Completada',
+    className: 'completed',
+  },
+];
+
+const INITIAL_ACTIVITIES = [];
+
+function getInitials(name = '') {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join('') || 'U';
+}
+
+function formatDate(dateValue) {
+  if (!dateValue) {
+    return 'Sin fecha';
+  }
+
+  const normalizedDate =
+    typeof dateValue === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
+      ? `${dateValue}T00:00:00`
+      : dateValue;
+
+  const parsedDate = new Date(normalizedDate);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    console.error(
+      'Fecha inválida recibida:',
+      dateValue,
+    );
+
+    return 'Fecha inválida';
+  }
+
+  return new Intl.DateTimeFormat('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(parsedDate);
+}
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
 
-  // Simulación de tareas para que el "TaskBoard Académico" no se vea vacío
-  const tasks = [
-    { id: 1, title: 'HU-04.02 — Validar campos y credenciales', status: 'In Progress', label: 'Feature', color: '#a371f7' },
-    { id: 2, title: 'HU-04.04 — Proteger rutas privadas', status: 'Done', label: 'Security', color: '#38bdf8' },
-    { id: 3, title: 'HU-04.06 — Configurar roles ADMIN y USER', status: 'To Do', label: 'Enhancement', color: '#535f80' },
-  ];
+  const [isActivityModalOpen, setIsActivityModalOpen] =
+    useState(false);
+
+  const [activities, setActivities] =
+    useState(INITIAL_ACTIVITIES);
+
+    const [notification, setNotification] =
+    useState(null);
+
+  const indicators = useMemo(() => {
+    const total = activities.length;
+
+    const pending = activities.filter(
+      (activity) =>
+        activity.estatus === 'PENDIENTE',
+    ).length;
+
+    const inProgress = activities.filter(
+      (activity) =>
+        activity.estatus === 'EN_PROCESO',
+    ).length;
+
+    const inReview = activities.filter(
+      (activity) =>
+        activity.estatus === 'EN_REVISION',
+    ).length;
+
+    const completed = activities.filter(
+      (activity) =>
+        activity.estatus === 'COMPLETADA',
+    ).length;
+
+    const progress =
+      total > 0
+        ? Math.round((completed / total) * 100)
+        : 0;
+
+    return {
+      total,
+      pending,
+      inProgress,
+      inReview,
+      completed,
+      progress,
+    };
+  }, [activities]);
+
+  async function handleCreateActivity(
+  activityData,
+) {
+  setNotification(null);
+
+  try {
+    const result = await createActivity({
+      titulo: activityData.titulo,
+      descripcion: activityData.descripcion,
+      idResponsable: null,
+      fechaLimite: activityData.fechaLimite,
+      prioridad: activityData.prioridad,
+      estatus: activityData.estatus,
+    });
+
+    const savedActivity = result.actividad;
+
+    const newActivity = {
+      id: savedActivity.id_actividad,
+      titulo: savedActivity.titulo,
+      descripcion:
+        savedActivity.descripcion || '',
+      responsable:
+        savedActivity.responsable?.nombre ||
+        'Sin responsable',
+      fechaLimite:
+    typeof savedActivity.fecha_limite === 'string'
+    ? savedActivity.fecha_limite.slice(0, 10)
+    : savedActivity.fecha_limite,
+      prioridad: savedActivity.prioridad,
+      estatus: savedActivity.estatus,
+      comentarios: 0,
+      evidencias: 0,
+    };
+
+    setActivities((currentActivities) => [
+      newActivity,
+      ...currentActivities,
+    ]);
+
+    setIsActivityModalOpen(false);
+
+    setNotification({
+      type: 'success',
+      message:
+        result.message ||
+        'Actividad registrada correctamente.',
+    });
+
+    window.setTimeout(() => {
+      setNotification(null);
+    }, 4000);
+  } catch (error) {
+    console.error(
+      'Error registrando actividad:',
+      error,
+    );
+
+    setNotification({
+      type: 'error',
+      message:
+        error.message ||
+        'No fue posible registrar la actividad.',
+    });
+  }
+}
+
+  function getActivitiesByStatus(status) {
+    return activities.filter(
+      (activity) => activity.estatus === status,
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      {/* Barra de Navegación Superior */}
-      <header style={styles.navbar}>
-        <div style={styles.navLeft}>
-          <span style={styles.logo}>TASK BLOQ</span>
-          <span style={styles.breadcrumb}>/ TaskBoard Académico</span>
+    <div className="taskboard-page">
+      <header className="taskboard-navbar">
+        <div className="taskboard-brand">
+          <div
+            className="taskboard-brand__logo"
+            aria-hidden="true"
+          >
+            TB
+          </div>
+
+          <strong>TASK BLOQ</strong>
+
+          <span>Tablero Académico</span>
         </div>
-        <div style={styles.navRight}>
-          <span style={styles.userBadge}>{user?.name} ({user?.role})</span>
-          <button onClick={logout} style={styles.logoutBtn}>Cerrar Sesión</button>
+
+        <div className="taskboard-session">
+          <div className="taskboard-user">
+            <span className="taskboard-avatar">
+              {getInitials(user?.name)}
+            </span>
+
+            <span>
+              {user?.name || 'Usuario'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="taskboard-logout"
+            onClick={logout}
+          >
+            <LogOut
+              size={19}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />
+
+            Cerrar sesión
+          </button>
         </div>
       </header>
 
-      {/* Contenido Principal */}
-      <div style={styles.layout}>
-        {/* Sección del Tablero (Izquierda) */}
-        <main style={styles.mainContent}>
-          <div style={styles.boardHeader}>
-            <span style={styles.openBadge}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: '6px' }}>
-                <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM2 8a6 6 0 1112 0A6 6 0 012 8z"></path>
-              </svg>
-              Tablero Activo
-            </span>
-            <h2 style={styles.boardTitle}>Sprint 1 - Gestión de Tareas Académicas</h2>
+      <main className="taskboard-content">
+        <section className="taskboard-heading">
+          <div>
+            <h1>Tablero de actividades</h1>
+
+            <p>
+              Proyecto: Investigación Educativa —
+              Semestre 2026
+            </p>
           </div>
 
-          <div style={styles.taskList}>
-            {tasks.map((task) => (
-              <div key={task.id} style={styles.taskCard}>
-                <div style={styles.taskHeader}>
-                  <span style={{ ...styles.taskLabel, border: `1px solid ${task.color}`, color: task.color }}>
-                    {task.label}
+          <button
+            type="button"
+            className="new-activity-button"
+            onClick={() =>
+              setIsActivityModalOpen(true)
+            }
+          >
+            <Plus
+              size={21}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+
+            Nueva actividad
+          </button>
+        </section>
+
+        {notification && (
+  <div
+    className={`dashboard-alert dashboard-alert--${notification.type}`}
+    role="alert"
+  >
+    {notification.message}
+  </div>
+)}
+
+        <section
+          className="taskboard-indicators"
+          aria-label="Indicadores de actividades"
+        >
+          <article className="indicator-card indicator-card--total">
+            <div className="indicator-card__label">
+              <ClipboardList size={18} />
+              <span>Total</span>
+            </div>
+
+            <strong>{indicators.total}</strong>
+            <p>actividades</p>
+          </article>
+
+          <article className="indicator-card indicator-card--pending">
+            <div className="indicator-card__label">
+              <Clock3 size={18} />
+              <span>Pendientes</span>
+            </div>
+
+            <strong>{indicators.pending}</strong>
+
+            <div className="indicator-progress">
+              <span
+                style={{
+                  width: `${
+                    indicators.total
+                      ? (
+                          indicators.pending /
+                          indicators.total
+                        ) * 100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </article>
+
+          <article className="indicator-card indicator-card--progress">
+            <div className="indicator-card__label">
+              <RefreshCw size={18} />
+              <span>En proceso</span>
+            </div>
+
+            <strong>{indicators.inProgress}</strong>
+
+            <div className="indicator-progress">
+              <span
+                style={{
+                  width: `${
+                    indicators.total
+                      ? (
+                          indicators.inProgress /
+                          indicators.total
+                        ) * 100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </article>
+
+          <article className="indicator-card indicator-card--review">
+            <div className="indicator-card__label">
+              <Eye size={18} />
+              <span>En revisión</span>
+            </div>
+
+            <strong>{indicators.inReview}</strong>
+
+            <div className="indicator-progress">
+              <span
+                style={{
+                  width: `${
+                    indicators.total
+                      ? (
+                          indicators.inReview /
+                          indicators.total
+                        ) * 100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </article>
+
+          <article className="indicator-card indicator-card--completed">
+            <div className="indicator-card__label">
+              <CheckCircle2 size={18} />
+              <span>Completadas</span>
+            </div>
+
+            <strong>{indicators.completed}</strong>
+
+            <div className="indicator-progress">
+              <span
+                style={{
+                  width: `${
+                    indicators.total
+                      ? (
+                          indicators.completed /
+                          indicators.total
+                        ) * 100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </article>
+
+          <article className="indicator-card indicator-card--advance">
+            <div className="indicator-card__label">
+              <TrendingUp size={18} />
+              <span>Avance</span>
+            </div>
+
+            <strong>{indicators.progress}%</strong>
+
+            <div className="indicator-progress">
+              <span
+                style={{
+                  width: `${indicators.progress}%`,
+                }}
+              />
+            </div>
+
+            <p>
+              {indicators.completed} de{' '}
+              {indicators.total} completadas
+            </p>
+          </article>
+        </section>
+
+        <section
+          className="taskboard-columns"
+          aria-label="Tablero de actividades"
+        >
+          {STATUS_COLUMNS.map((column) => {
+            const columnActivities =
+              getActivitiesByStatus(column.value);
+
+            return (
+              <article
+                key={column.value}
+                className={`board-column board-column--${column.className}`}
+              >
+                <header className="board-column__header">
+                  <div>
+                    <span className="board-column__dot" />
+
+                    <h2>{column.label}</h2>
+                  </div>
+
+                  <span className="board-column__count">
+                    {columnActivities.length}
                   </span>
-                  <span style={styles.taskStatus}>{task.status}</span>
+                </header>
+
+                <div className="board-column__content">
+                  {columnActivities.length === 0 ? (
+                    <div className="board-column__empty">
+                      No hay actividades
+                    </div>
+                  ) : (
+                    columnActivities.map(
+                      (activity) => (
+                        <article
+                          key={activity.id}
+                          className="activity-card"
+                        >
+                          <div className="activity-card__top">
+                            <span
+                              className={`priority-badge priority-badge--${activity.prioridad.toLowerCase()}`}
+                            >
+                              <span />
+                              {activity.prioridad
+                                .charAt(0)
+                                .toUpperCase() +
+                                activity.prioridad
+                                  .slice(1)
+                                  .toLowerCase()}
+                            </span>
+
+                            {activity.comentarios > 0 && (
+                              <span className="activity-card__comments">
+                                <MessageSquare
+                                  size={16}
+                                />
+                                {activity.comentarios}
+                              </span>
+                            )}
+                          </div>
+
+                          <h3>{activity.titulo}</h3>
+
+                          <div className="activity-card__person">
+                            <span className="activity-avatar">
+                              {getInitials(
+                                activity.responsable,
+                              )}
+                            </span>
+
+                            <span>
+                              {activity.responsable}
+                            </span>
+                          </div>
+
+                          <div className="activity-card__date">
+                            <CalendarDays size={16} />
+
+                            <span>
+                              {formatDate(
+                                activity.fechaLimite,
+                              )}
+                            </span>
+                          </div>
+
+                          {activity.evidencias > 0 && (
+                            <div className="activity-card__evidence">
+                              <Paperclip size={16} />
+
+                              <span>
+                                {activity.evidencias}{' '}
+                                evidencia(s)
+                              </span>
+                            </div>
+                          )}
+
+                          <footer className="activity-card__footer">
+                            <button type="button">
+                              Ver detalle
+
+                              <ChevronRight
+                                size={17}
+                              />
+                            </button>
+                          </footer>
+                        </article>
+                      ),
+                    )
+                  )}
                 </div>
-                <p style={styles.taskTitleText}>{task.title}</p>
-              </div>
-            ))}
-          </div>
-        </main>
+              </article>
+            );
+          })}
+        </section>
+      </main>
 
-        {/* Barra Lateral Derecha (Fiel al estilo "Metadatos" de la captura de pantalla) */}
-        <aside style={styles.sidebar}>
-          <div style={styles.sidebarSection}>
-            <span style={styles.sidebarTitle}>Assignees</span>
-            <div style={styles.sidebarContent}>
-              <div style={styles.avatarRow}>
-                <div style={styles.avatar}>{user?.name?.charAt(0) || 'U'}</div>
-                <span>{user?.name} (Tú)</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.sidebarSection}>
-            <span style={styles.sidebarTitle}>Labels</span>
-            <div style={styles.sidebarContent}>
-              <span style={{ ...styles.miniBadge, backgroundColor: '#23863622', color: '#2ea043', border: '1px solid #238636' }}>
-                Active Session
-              </span>
-              <span style={{ ...styles.miniBadge, backgroundColor: '#1f6feb22', color: '#38bdf8', border: '1px solid #1f6feb', marginLeft: '5px' }}>
-                {user?.role}
-              </span>
-            </div>
-          </div>
-
-          <div style={styles.sidebarSection}>
-            <span style={styles.sidebarTitle}>Projects</span>
-            <div style={styles.sidebarContent}>
-              <span style={styles.sidebarText}>TASK-BLOQ- Board</span>
-            </div>
-          </div>
-
-          <div style={styles.sidebarSection}>
-            <span style={styles.sidebarTitle}>Milestone</span>
-            <div style={styles.sidebarContent}>
-              <span style={styles.sidebarText}>Fase 1: Autenticación</span>
-            </div>
-          </div>
-        </aside>
-      </div>
+      <ActivityFormModal
+        isOpen={isActivityModalOpen}
+        onClose={() =>
+          setIsActivityModalOpen(false)
+        }
+        onSubmit={handleCreateActivity}
+      />
     </div>
   );
 }
-
-const styles = {
-  container: {
-    backgroundColor: '#0d1117', // Fondo exacto de GitHub Dark
-    color: '#c9d1d9',
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-  },
-  navbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '0.75rem 1.5rem',
-    backgroundColor: '#161b22',
-    borderBottom: '1px solid #30363d',
-  },
-  logo: {
-    fontWeight: 'bold',
-    color: '#f0f6fc',
-    fontSize: '1.1rem',
-  },
-  breadcrumb: {
-    color: '#8b949e',
-    marginLeft: '5px',
-    fontSize: '0.95rem',
-  },
-  navRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-  },
-  userBadge: {
-    fontSize: '0.85rem',
-    color: '#8b949e',
-  },
-  logoutBtn: {
-    padding: '4px 12px',
-    backgroundColor: '#21262d',
-    color: '#c9d1d9',
-    border: '1px solid #30363d',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: '600',
-  },
-  layout: {
-    display: 'flex',
-    flex: 1,
-  },
-  mainContent: {
-    flex: 1,
-    padding: '2rem',
-    borderRight: '1px solid #30363d',
-  },
-  boardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '2rem',
-    borderBottom: '1px solid #21262d',
-    paddingBottom: '1rem',
-  },
-  openBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '4px 12px',
-    backgroundColor: '#238636',
-    color: '#ffffff',
-    borderRadius: '2em',
-    fontSize: '0.85rem',
-    fontWeight: '600',
-  },
-  boardTitle: {
-    fontSize: '1.25rem',
-    color: '#f0f6fc',
-    margin: 0,
-    fontWeight: '400',
-  },
-  taskList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-    maxWidth: '800px',
-  },
-  taskCard: {
-    backgroundColor: '#161b22',
-    border: '1px solid #30363d',
-    borderRadius: '6px',
-    padding: '1rem',
-  },
-  taskHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '0.5rem',
-  },
-  taskLabel: {
-    fontSize: '0.75rem',
-    padding: '2px 8px',
-    borderRadius: '2em',
-    fontWeight: '600',
-  },
-  taskStatus: {
-    fontSize: '0.75rem',
-    color: '#8b949e',
-  },
-  taskTitleText: {
-    margin: 0,
-    color: '#f0f6fc',
-    fontSize: '0.95rem',
-    fontWeight: '600',
-  },
-  /* Estilos de la Barra Lateral Derecha */
-  sidebar: {
-    width: '280px',
-    padding: '2rem 1.5rem',
-    backgroundColor: '#0d1117',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.5rem',
-  },
-  sidebarSection: {
-    borderBottom: '1px solid #21262d',
-    paddingBottom: '1rem',
-  },
-  sidebarTitle: {
-    display: 'block',
-    fontSize: '0.8rem',
-    fontWeight: '600',
-    color: '#8b949e',
-    marginBottom: '0.5rem',
-  },
-  sidebarContent: {
-    fontSize: '0.85rem',
-    color: '#c9d1d9',
-  },
-  avatarRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  avatar: {
-    width: '24px',
-    height: '24px',
-    borderRadius: '50%',
-    backgroundColor: '#1f6feb',
-    color: '#ffffff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 'bold',
-    fontSize: '0.75rem',
-  },
-  miniBadge: {
-    fontSize: '0.75rem',
-    padding: '2px 6px',
-    borderRadius: '2em',
-    fontWeight: '600',
-  },
-  sidebarText: {
-    fontSize: '0.85rem',
-    color: '#8b949e',
-  },
-};
