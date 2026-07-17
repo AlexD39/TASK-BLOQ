@@ -12,13 +12,13 @@ import {
   Plus,
   RefreshCw,
   TrendingUp,
+  X,
 } from 'lucide-react';
 
 import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { createActivity } from '../../services/activities.service.js';
 import '../../styles/dashboard.css';
-
 
 const STATUS_COLUMNS = [
   {
@@ -89,10 +89,13 @@ export default function DashboardPage() {
   const [isActivityModalOpen, setIsActivityModalOpen] =
     useState(false);
 
+  // Estado para el modal de ver detalles
+  const [selectedActivity, setSelectedActivity] = useState(null);
+
   const [activities, setActivities] =
     useState(INITIAL_ACTIVITIES);
 
-    const [notification, setNotification] =
+  const [notification, setNotification] =
     useState(null);
 
   const indicators = useMemo(() => {
@@ -134,71 +137,79 @@ export default function DashboardPage() {
   }, [activities]);
 
   async function handleCreateActivity(
-  activityData,
-) {
-  setNotification(null);
+    activityData,
+  ) {
+    setNotification(null);
 
-  try {
-    const result = await createActivity({
-      titulo: activityData.titulo,
-      descripcion: activityData.descripcion,
-      idResponsable: null,
-      fechaLimite: activityData.fechaLimite,
-      prioridad: activityData.prioridad,
-      estatus: activityData.estatus,
-    });
+    try {
+      // Pasamos la data del formulario
+      const result = await createActivity({
+        titulo: activityData.titulo,
+        descripcion: activityData.descripcion,
+        idResponsable: activityData.idResponsable || null,
+        fechaLimite: activityData.fechaLimite,
+        prioridad: activityData.prioridad,
+        estatus: activityData.estatus,
+        evidencia_url: activityData.evidencia_url || '', // Tu nuevo campo de evidencia
+      });
 
-    const savedActivity = result.actividad;
+      const savedActivity = result.actividad;
 
-    const newActivity = {
-      id: savedActivity.id_actividad,
-      titulo: savedActivity.titulo,
-      descripcion:
-        savedActivity.descripcion || '',
-      responsable:
-        savedActivity.responsable?.nombre ||
-        'Sin responsable',
-      fechaLimite:
-    typeof savedActivity.fecha_limite === 'string'
-    ? savedActivity.fecha_limite.slice(0, 10)
-    : savedActivity.fecha_limite,
-      prioridad: savedActivity.prioridad,
-      estatus: savedActivity.estatus,
-      comentarios: 0,
-      evidencias: 0,
-    };
+      // 🛠️ Mapeo corregido para soportar tanto la respuesta de simulación como la real
+      const newActivity = {
+        id: savedActivity.id || savedActivity.id_actividad || Math.floor(Math.random() * 1000),
+        titulo: savedActivity.titulo,
+        descripcion: savedActivity.descripcion || '',
+        // Si hay un objeto responsable lo lee, de lo contrario busca el string directamente o asigna tu usuario logueado
+        responsable:
+          savedActivity.responsable?.nombre ||
+          activityData.responsable ||
+          user?.name ||
+          'Sin responsable',
+        // Asegura leer fecha_limite o fechaLimite según sea el caso
+        fechaLimite:
+          savedActivity.fechaLimite ||
+          savedActivity.fecha_limite ||
+          activityData.fechaLimite,
+        prioridad: savedActivity.prioridad,
+        estatus: savedActivity.estatus,
+        comentarios: 0,
+        // Si tiene evidencia (evidencia_url), le marca 1 para que aparezca el icono de clip en la tarjeta
+        evidencias: (savedActivity.evidencia_url || activityData.evidencia_url) ? 1 : 0,
+        evidencia_url: savedActivity.evidencia_url || activityData.evidencia_url || '',
+      };
 
-    setActivities((currentActivities) => [
-      newActivity,
-      ...currentActivities,
-    ]);
+      setActivities((currentActivities) => [
+        newActivity,
+        ...currentActivities,
+      ]);
 
-    setIsActivityModalOpen(false);
+      setIsActivityModalOpen(false);
 
-    setNotification({
-      type: 'success',
-      message:
-        result.message ||
-        'Actividad registrada correctamente.',
-    });
+      setNotification({
+        type: 'success',
+        message:
+          result.message ||
+          'Actividad registrada correctamente.',
+      });
 
-    window.setTimeout(() => {
-      setNotification(null);
-    }, 4000);
-  } catch (error) {
-    console.error(
-      'Error registrando actividad:',
-      error,
-    );
+      window.setTimeout(() => {
+        setNotification(null);
+      }, 4000);
+    } catch (error) {
+      console.error(
+        'Error registrando actividad:',
+        error,
+      );
 
-    setNotification({
-      type: 'error',
-      message:
-        error.message ||
-        'No fue posible registrar la actividad.',
-    });
+      setNotification({
+        type: 'error',
+        message:
+          error.message ||
+          'No fue posible registrar la actividad.',
+      });
+    }
   }
-}
 
   function getActivitiesByStatus(status) {
     return activities.filter(
@@ -278,13 +289,13 @@ export default function DashboardPage() {
         </section>
 
         {notification && (
-  <div
-    className={`dashboard-alert dashboard-alert--${notification.type}`}
-    role="alert"
-  >
-    {notification.message}
-  </div>
-)}
+          <div
+            className={`dashboard-alert dashboard-alert--${notification.type}`}
+            role="alert"
+          >
+            {notification.message}
+          </div>
+        )}
 
         <section
           className="taskboard-indicators"
@@ -515,7 +526,11 @@ export default function DashboardPage() {
                           )}
 
                           <footer className="activity-card__footer">
-                            <button type="button">
+                            {/* 🛠️ ASIGNAMOS EVENTO ONCLICK PARA ABRIR DETALLE */}
+                            <button 
+                              type="button"
+                              onClick={() => setSelectedActivity(activity)}
+                            >
                               Ver detalle
 
                               <ChevronRight
@@ -541,6 +556,119 @@ export default function DashboardPage() {
         }
         onSubmit={handleCreateActivity}
       />
+
+      {/* 🛠️ MODAL DE DETALLE INTERACTIVO LOCAL */}
+      {selectedActivity && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div className="modal-content" style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '500px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            position: 'relative'
+          }}>
+            <button 
+              onClick={() => setSelectedActivity(null)}
+              style={{
+                position: 'absolute',
+                top: '16px', right: '16px',
+                background: 'none', border: 'none',
+                cursor: 'pointer', color: '#666'
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <h2 style={{ marginTop: 0, marginBottom: '8px', color: '#1a1a1a' }}>
+              {selectedActivity.titulo}
+            </h2>
+            
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 10px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              backgroundColor: selectedActivity.prioridad === 'ALTA' ? '#fee2e2' : '#fef3c7',
+              color: selectedActivity.prioridad === 'ALTA' ? '#991b1b' : '#92400e',
+              marginBottom: '16px'
+            }}>
+              Prioridad: {selectedActivity.prioridad}
+            </span>
+
+            <div style={{ marginBottom: '16px' }}>
+              <strong style={{ display: 'block', marginBottom: '4px', color: '#555' }}>Descripción:</strong>
+              <p style={{ margin: 0, color: '#333', fontSize: '14px', lineHeight: '1.5' }}>
+                {selectedActivity.descripcion || 'Sin descripción.'}
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+              <div>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Responsable:</strong>
+                <span style={{ fontSize: '14px', color: '#111' }}>{selectedActivity.responsable}</span>
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#555' }}>Fecha límite:</strong>
+                <span style={{ fontSize: '14px', color: '#111' }}>{formatDate(selectedActivity.fechaLimite)}</span>
+              </div>
+            </div>
+
+            {/* MOSTRAR TU NUEVO CAMPO DE EVIDENCIA SI EXISTE */}
+            {selectedActivity.evidencia_url && (
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '20px'
+              }}>
+                <Paperclip size={18} style={{ color: '#16a34a' }} />
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                  <strong style={{ display: 'block', fontSize: '12px', color: '#15803d' }}>Enlace de Evidencia:</strong>
+                  <a 
+                    href={selectedActivity.evidencia_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '13px', color: '#16a34a', textDecoration: 'underline' }}
+                  >
+                    {selectedActivity.evidencia_url}
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <button 
+              onClick={() => setSelectedActivity(null)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                backgroundColor: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              Cerrar Detalle
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

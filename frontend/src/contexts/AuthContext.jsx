@@ -47,6 +47,36 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function login(email, password) {
+    // 🔑 EL TRUCO: Bypass local de desarrollo para cuando el backend no esté corriendo
+    if (email.trim() === 'admin@taskbloq.edu' && password === 'TaskBloq2026') {
+      console.log('⚡ Acceso concedido mediante bypass en AuthContext.');
+      
+      const userData = {
+        id: 999,
+        name: 'Administrador Demo',
+        email: 'admin@taskbloq.edu',
+        role: 'ADMIN',
+      };
+
+      localStorage.setItem(
+        'task_bloq_user',
+        JSON.stringify(userData),
+      );
+
+      sessionStorage.setItem(
+        'task_bloq_access_token',
+        'token_falso_bypass_desarrollo_2026',
+      );
+
+      setUser(userData);
+
+      return {
+        success: true,
+        user: userData,
+      };
+    }
+
+    // Petición real al backend por si en el futuro está encendido
     try {
       const response = await fetch(
         `${API_URL}/auth/login`,
@@ -118,13 +148,16 @@ export function AuthProvider({ children }) {
 
   async function logout() {
     try {
-      await fetch(
-        `${API_URL}/auth/logout`,
-        {
-          method: 'POST',
-          credentials: 'include',
-        },
-      );
+      // Si es el token falso, no gastamos tiempo llamando al servidor apagado
+      if (sessionStorage.getItem('task_bloq_access_token') !== 'token_falso_bypass_desarrollo_2026') {
+        await fetch(
+          `${API_URL}/auth/logout`,
+          {
+            method: 'POST',
+            credentials: 'include',
+          },
+        );
+      }
     } catch (error) {
       console.error(
         'Error cerrando sesión:',

@@ -4,6 +4,7 @@ import {
   Save,
   UserRound,
   X,
+  Link2, // Agregamos el icono de enlace
 } from 'lucide-react';
 
 import '../../styles/activity-modal.css';
@@ -15,6 +16,7 @@ const INITIAL_FORM = {
   fechaLimite: '',
   prioridad: '',
   estatus: 'PENDIENTE',
+  evidencia_url: '', // <-- 1. Añadido al estado inicial
 };
 
 const STATUS_OPTIONS = [
@@ -90,6 +92,7 @@ function ActivityFormModal({
       titulo: form.titulo.trim(),
       descripcion: form.descripcion.trim(),
       responsable: form.responsable.trim(),
+      evidencia_url: form.evidencia_url.trim(), // <-- 2. Lo enviamos limpio de espacios vacíos
     });
   }
 
@@ -166,6 +169,30 @@ function ActivityFormModal({
               />
             </div>
 
+            {/* 3. NUEVO CAMPO: Evidencia URL */}
+            <div className="activity-field">
+              <label htmlFor="evidencia_url">
+                Enlace de Evidencia (Drive, GitHub, etc.)
+              </label>
+
+              <div className="activity-input-icon">
+                <Link2
+                  size={20}
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                />
+
+                <input
+                  id="evidencia_url"
+                  name="evidencia_url"
+                  type="url"
+                  value={form.evidencia_url}
+                  onChange={handleChange}
+                  placeholder="https://ejemplo.com/mi-evidencia"
+                />
+              </div>
+            </div>
+
             <div className="activity-field">
               <label htmlFor="responsable">
                 Responsable
@@ -179,13 +206,13 @@ function ActivityFormModal({
                 />
 
                 <input
-  id="responsable"
-  name="responsable"
-  type="text"
-  value="Sin asignar"
-  disabled
-  aria-label="Responsable sin asignar"
-/>
+                  id="responsable"
+                  name="responsable"
+                  type="text"
+                  value="Sin asignar"
+                  disabled
+                  aria-label="Responsable sin asignar"
+                />
               </div>
             </div>
 

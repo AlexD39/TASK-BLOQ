@@ -16,6 +16,24 @@ export async function createActivity(
     );
   }
 
+  // 🔑 EL TRUCO: Si estamos usando el token falso de desarrollo, simulamos éxito directo
+  if (accessToken === 'token_falso_bypass_desarrollo_2026') {
+    console.log('⚡ Actividad creada localmente (Bypass de demostración):', activityData);
+    
+    // Devolvemos una respuesta exitosa idéntica a la que esperaría recibir el frontend
+    return {
+      ok: true,
+      message: 'Actividad registrada exitosamente.',
+      actividad: {
+        id: Math.floor(Math.random() * 1000), // ID aleatorio temporal
+        ...activityData,
+        estatus: activityData.estatus || 'PENDIENTE',
+        fechaLimite: activityData.fechaLimite || new Date().toISOString().split('T')[0]
+      }
+    };
+  }
+
+  // Petición real original para cuando el backend esté encendido:
   const response = await fetch(
     `${API_URL}/activities`,
     {
