@@ -2,7 +2,7 @@ import {useEffect, useMemo, useState, } from 'react';
 import { CheckCircle2, ClipboardList, Clock3, Eye, LogOut, Plus,  RefreshCw, TrendingUp, } from 'lucide-react';
 import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import {createActivity, getActivities, updateActivity,} from '../../services/activities.service.js';
+import {createActivity, getActivities, getUsers, updateActivity,} from '../../services/activities.service.js';
 import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
 import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
 
@@ -40,6 +40,47 @@ export default function DashboardPage() {
 
   const [notification, setNotification] =
     useState(null);
+
+  const [users, setUsers] =
+    useState([]);
+
+  const canAssignResponsible =
+    user?.role === 'ADMIN';
+
+  useEffect(() => {
+    let componentIsMounted = true;
+
+    if (!canAssignResponsible) {
+      setUsers([]);
+
+      return undefined;
+    }
+
+    async function loadUsers() {
+      try {
+        const result = await getUsers();
+
+        if (componentIsMounted) {
+          setUsers(
+            Array.isArray(result.usuarios)
+              ? result.usuarios
+              : [],
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error cargando usuarios:',
+          error,
+        );
+      }
+    }
+
+    loadUsers();
+
+    return () => {
+      componentIsMounted = false;
+    };
+  }, [canAssignResponsible]);
 
     useEffect(() => {
     let componentIsMounted = true;
@@ -113,31 +154,31 @@ export default function DashboardPage() {
         currentActivities.map((activity) => {
           if (
             String(activity.id) !==
-            String(
-              savedActivity.id_actividad,
-            )
+            String(savedActivity.id)
           ) {
             return activity;
           }
 
           return {
             ...activity,
-            id: savedActivity.id_actividad,
+            id: savedActivity.id,
             titulo: savedActivity.titulo,
             descripcion:
               savedActivity.descripcion || '',
+            idResponsable:
+              savedActivity.idResponsable ??
+              null,
             responsable:
-              savedActivity.responsable?.nombre ||
-              activity.responsable ||
+              savedActivity.responsable ||
               'Sin responsable',
             fechaLimite:
-              typeof savedActivity.fecha_limite ===
+              typeof savedActivity.fechaLimite ===
               'string'
-                ? savedActivity.fecha_limite.slice(
+                ? savedActivity.fechaLimite.slice(
                     0,
                     10,
                   )
-                : savedActivity.fecha_limite,
+                : savedActivity.fechaLimite,
             prioridad:
               savedActivity.prioridad,
             estatus:
@@ -224,7 +265,7 @@ export default function DashboardPage() {
     const result = await createActivity({
       titulo: activityData.titulo,
       descripcion: activityData.descripcion,
-      idResponsable: null,
+      idResponsable: activityData.idResponsable,
       fechaLimite: activityData.fechaLimite,
       prioridad: activityData.prioridad,
       estatus: activityData.estatus,
@@ -237,6 +278,8 @@ export default function DashboardPage() {
       titulo: savedActivity.titulo,
       descripcion:
         savedActivity.descripcion || '',
+      idResponsable:
+        savedActivity.id_responsable ?? null,
       responsable:
         savedActivity.responsable?.nombre ||
         'Sin responsable',
@@ -516,6 +559,10 @@ export default function DashboardPage() {
           setIsActivityModalOpen(false)
         }
         onSubmit={handleCreateActivity}
+        users={users}
+        canAssignResponsible={
+          canAssignResponsible
+        }
       />
 
 <ActivityEditModal
@@ -523,6 +570,8 @@ export default function DashboardPage() {
   activity={selectedActivity}
   onClose={handleCloseEditModal}
   onSubmit={handleUpdateActivity}
+  users={users}
+  canAssignResponsible={canAssignResponsible}
 />
 
     </div>
