@@ -419,3 +419,21 @@
     padding-left: 18px;
   }
 }
+
+.activity-form-error {
+  padding: 13px 15px;
+
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 650;
+
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 13px;
+}
+
+.activity-button:disabled,
+.activity-modal__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}

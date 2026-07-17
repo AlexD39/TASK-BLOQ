@@ -781,3 +781,22 @@
     transform: translateY(0);
   }
 }
+
+.dashboard-board-state {
+  display: grid;
+  min-height: 240px;
+  margin-top: 20px;
+
+  place-items: center;
+
+  color: #64748b;
+  font-size: 16px;
+  font-weight: 650;
+
+  background: #ffffff;
+  border: 1px solid #dce5ef;
+  border-radius: 18px;
+
+  box-shadow:
+    0 4px 11px rgba(15, 23, 42, 0.06);
+}

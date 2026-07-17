@@ -1,49 +1,107 @@
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  'http://localhost:3001/api';
+import { apiFetch } from './api.service.js';
+
+async function readResponse(response) {
+  return response
+    .json()
+    .catch(() => ({}));
+}
+
+function getErrorMessage(
+  data,
+  defaultMessage,
+) {
+  const validationError =
+    data.errors
+      ? Object.values(data.errors)[0]
+      : null;
+
+  return (
+    validationError ||
+    data.message ||
+    defaultMessage
+  );
+}
+
+export async function getActivities() {
+  const response = await apiFetch(
+    '/activities',
+    {
+      method: 'GET',
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible consultar las actividades.',
+      ),
+    );
+  }
+
+  return data;
+}
 
 export async function createActivity(
   activityData,
 ) {
-  const accessToken =
-    sessionStorage.getItem(
-      'task_bloq_access_token',
-    );
-
-  if (!accessToken) {
-    throw new Error(
-      'La sesión no es válida. Inicia sesión nuevamente.',
-    );
-  }
-
-  const response = await fetch(
-    `${API_URL}/activities`,
+  const response = await apiFetch(
+    '/activities',
     {
       method: 'POST',
 
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
       },
 
       body: JSON.stringify(activityData),
     },
   );
 
-  const data = await response
-    .json()
-    .catch(() => ({}));
+  const data =
+    await readResponse(response);
 
   if (!response.ok || !data.ok) {
-    const validationError =
-      data.errors
-        ? Object.values(data.errors)[0]
-        : null;
-
     throw new Error(
-      validationError ||
-        data.message ||
+      getErrorMessage(
+        data,
         'No fue posible registrar la actividad.',
+      ),
+    );
+  }
+
+  return data;
+}
+
+export async function updateActivity(
+  activityId,
+  activityData,
+) {
+  const response = await apiFetch(
+    `/activities/${activityId}`,
+    {
+      method: 'PATCH',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(activityData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible actualizar la actividad.',
+      ),
     );
   }
 

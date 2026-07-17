@@ -816,6 +816,291 @@ if (idResponsable !== null) {
   },
 );
 
+/* =========================================
+   LISTAR ACTIVIDADES
+========================================= */
+
+app.get(
+  '/api/activities',
+  requireAccessToken,
+  async (_request, response) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          a.id_actividad AS id,
+          a.titulo,
+          COALESCE(a.descripcion, '') AS descripcion,
+          a.fecha_limite AS "fechaLimite",
+          a.estatus,
+          a.prioridad,
+          a.creado_en AS "creadoEn",
+
+          a.id_creador AS "idCreador",
+          creador.nombre AS creador,
+
+          a.id_responsable AS "idResponsable",
+          responsable.nombre AS responsable,
+
+          (
+            SELECT COUNT(*)::INTEGER
+            FROM comentarios c
+            WHERE c.id_actividad = a.id_actividad
+          ) AS comentarios,
+
+          (
+            SELECT COUNT(*)::INTEGER
+            FROM evidencias e
+            WHERE e.id_actividad = a.id_actividad
+          ) AS evidencias
+
+        FROM actividades a
+
+        INNER JOIN usuarios creador
+          ON creador.id_usuario = a.id_creador
+
+        LEFT JOIN usuarios responsable
+          ON responsable.id_usuario = a.id_responsable
+
+        ORDER BY
+          a.creado_en DESC,
+          a.id_actividad DESC
+      `);
+
+      return response.status(200).json({
+        ok: true,
+        actividades: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando actividades:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible consultar las actividades.',
+      });
+    }
+  },
+);
+
+/* =========================================
+   ACTUALIZAR ACTIVIDAD
+========================================= */
+
+app.patch(
+  '/api/activities/:id',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idActividad = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idActividad) ||
+        idActividad <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador de la actividad no es válido.',
+        });
+      }
+
+      const titulo =
+        typeof request.body?.titulo === 'string'
+          ? request.body.titulo.trim()
+          : '';
+
+      const descripcion =
+        typeof request.body?.descripcion === 'string'
+          ? request.body.descripcion.trim()
+          : '';
+
+      const fechaLimite =
+        typeof request.body?.fechaLimite === 'string'
+          ? request.body.fechaLimite.trim()
+          : '';
+
+      const prioridad =
+        typeof request.body?.prioridad === 'string'
+          ? request.body.prioridad
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const estatus =
+        typeof request.body?.estatus === 'string'
+          ? request.body.estatus
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const errors = {};
+
+      if (!titulo) {
+        errors.titulo =
+          'El título es obligatorio.';
+      } else if (titulo.length > 180) {
+        errors.titulo =
+          'El título no puede superar 180 caracteres.';
+      }
+
+      if (!fechaLimite) {
+        errors.fechaLimite =
+          'La fecha límite es obligatoria.';
+      }
+
+      const prioridadesPermitidas = [
+        'ALTA',
+        'MEDIA',
+        'BAJA',
+      ];
+
+      if (
+        !prioridadesPermitidas.includes(
+          prioridad,
+        )
+      ) {
+        errors.prioridad =
+          'La prioridad seleccionada no es válida.';
+      }
+
+      const estatusPermitidos = [
+        'PENDIENTE',
+        'EN_PROCESO',
+        'EN_REVISION',
+        'COMPLETADA',
+      ];
+
+      if (!estatusPermitidos.includes(estatus)) {
+        errors.estatus =
+          'El estatus seleccionado no es válido.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la actividad.',
+          errors,
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT
+            id_actividad,
+            id_creador
+          FROM actividades
+          WHERE id_actividad = $1
+          LIMIT 1
+        `,
+        [idActividad],
+      );
+
+      const existingActivity =
+        existingResult.rows[0];
+
+      if (!existingActivity) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const isCreator =
+        Number(existingActivity.id_creador) ===
+        request.auth.idUsuario;
+
+      const isAdmin =
+        request.auth.rol === 'ADMIN';
+
+      if (!isCreator && !isAdmin) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'No tienes permiso para editar esta actividad.',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          WITH actividad_actualizada AS (
+            UPDATE actividades
+            SET
+              titulo = $1,
+              descripcion = $2,
+              fecha_limite = $3,
+              prioridad = $4,
+              estatus = $5
+            WHERE id_actividad = $6
+            RETURNING *
+          )
+          SELECT
+            a.id_actividad,
+            a.titulo,
+            a.descripcion,
+            a.id_creador,
+            a.id_responsable,
+            a.fecha_limite,
+            a.estatus,
+            a.prioridad,
+            a.creado_en,
+            a.actualizado_en,
+
+            CASE
+              WHEN responsable.id_usuario IS NULL
+                THEN NULL
+              ELSE json_build_object(
+                'id',
+                responsable.id_usuario,
+                'nombre',
+                responsable.nombre,
+                'correo',
+                responsable.correo
+              )
+            END AS responsable
+
+          FROM actividad_actualizada a
+
+          LEFT JOIN usuarios responsable
+            ON responsable.id_usuario =
+              a.id_responsable
+        `,
+        [
+          titulo,
+          descripcion || null,
+          fechaLimite,
+          prioridad,
+          estatus,
+          idActividad,
+        ],
+      );
+
+      return response.status(200).json({
+        ok: true,
+        message:
+          'Actividad actualizada correctamente.',
+        actividad: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando actividad:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible actualizar la actividad.',
+      });
+    }
+  },
+);
 
 app.use((_request, response) => {
   return response.status(404).json({
