@@ -62,11 +62,14 @@ export default function ActivityEditModal({
   activity,
   onClose,
   onSubmit,
+  users = [],
+  canAssignResponsible = false,
 }) {
 
 const [form, setForm] = useState({
   titulo: '',
   descripcion: '',
+  idResponsable: '',
   fechaLimite: '',
   prioridad: '',
   estatus: '',
@@ -93,6 +96,10 @@ const [form, setForm] = useState({
     setForm({
   titulo: activity.titulo || '',
   descripcion: activity.descripcion || '',
+  idResponsable:
+    activity.idResponsable != null
+      ? String(activity.idResponsable)
+      : '',
   fechaLimite: normalizeDate(
     activity.fechaLimite,
   ),
@@ -285,6 +292,12 @@ function handleRemoveEvidence(
       titulo: form.titulo.trim(),
       descripcion:
         form.descripcion.trim(),
+      ...(canAssignResponsible
+        ? {
+            idResponsable:
+              form.idResponsable || null,
+          }
+        : {}),
       fechaLimite:
         form.fechaLimite,
       prioridad:
@@ -531,7 +544,7 @@ function handleRemoveEvidence(
 </div>
 
             <div className="activity-field">
-              <label>
+              <label htmlFor="edit-idResponsable">
                 Responsable
               </label>
 
@@ -541,15 +554,46 @@ function handleRemoveEvidence(
                   strokeWidth={1.7}
                 />
 
-                <input
-                  type="text"
-                  value={
-                    activity.responsable ||
-                    'Sin asignar'
-                  }
-                  disabled
-                />
+                {canAssignResponsible ? (
+                  <select
+                    id="edit-idResponsable"
+                    name="idResponsable"
+                    value={form.idResponsable}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    disabled={saving}
+                  >
+                    <option value="">
+                      Sin asignar
+                    </option>
+
+                    {users.map((availableUser) => (
+                      <option
+                        key={availableUser.id}
+                        value={availableUser.id}
+                      >
+                        {availableUser.nombre}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={
+                      activity.responsable ||
+                      'Sin asignar'
+                    }
+                    disabled
+                  />
+                )}
               </div>
+
+              {canAssignResponsible && (
+                <small className="activity-field__help">
+                  Solo un administrador puede
+                  asignar responsables.
+                </small>
+              )}
             </div>
 
             <div className="activity-form__row">

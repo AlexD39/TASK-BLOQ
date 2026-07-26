@@ -45,6 +45,29 @@ export async function getActivities() {
   return data;
 }
 
+export async function getUsers() {
+  const response = await apiFetch(
+    '/users',
+    {
+      method: 'GET',
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible consultar los usuarios.',
+      ),
+    );
+  }
+
+  return data;
+}
+
 export async function createActivity(
   activityData,
 ) {
