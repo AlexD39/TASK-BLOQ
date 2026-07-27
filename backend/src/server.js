@@ -703,12 +703,7 @@ const idResponsable =
               .toUpperCase()
           : '';
 
-      const estatus =
-        typeof request.body?.estatus === 'string'
-          ? request.body.estatus
-              .trim()
-              .toUpperCase()
-          : 'PENDIENTE';
+      const estatus = 'PENDIENTE';
 
       const errors = {};
 
@@ -1113,16 +1108,18 @@ if (evidenciaInvalida) {
       }
 
       const estatusPermitidos = [
-        'PENDIENTE',
-        'EN_PROCESO',
-        'EN_REVISION',
-        'COMPLETADA',
-      ];
+  'PENDIENTE',
+  'EN_PROCESO',
+  'EN_REVISION',
+  'COMPLETADA',
+];
 
-      if (!estatusPermitidos.includes(estatus)) {
-        errors.estatus =
-          'El estatus seleccionado no es válido.';
-      }
+if (
+  !estatusPermitidos.includes(estatus)
+) {
+  errors.estatus =
+    'El estatus seleccionado no es válido.';
+}
 
       if (Object.keys(errors).length > 0) {
         return response.status(400).json({
@@ -1133,18 +1130,24 @@ if (evidenciaInvalida) {
         });
       }
 
-      const existingResult = await pool.query(
-        `
-          SELECT
-            id_actividad,
-            id_creador,
-            id_responsable
-          FROM actividades
-          WHERE id_actividad = $1
-          LIMIT 1
-        `,
-        [idActividad],
-      );
+const existingResult = await pool.query(
+  `
+    SELECT
+      id_actividad,
+      titulo,
+      descripcion,
+      id_creador,
+      id_responsable,
+      fecha_limite::text AS fecha_limite,
+      prioridad,
+      estatus
+    FROM actividades
+    WHERE id_actividad = $1
+    LIMIT 1
+  `,
+  [idActividad],
+);
+
 
       const existingActivity =
         existingResult.rows[0];
@@ -1158,19 +1161,102 @@ if (evidenciaInvalida) {
       }
 
       const isCreator =
-        Number(existingActivity.id_creador) ===
-        request.auth.idUsuario;
+  Number(existingActivity.id_creador) ===
+  request.auth.idUsuario;
 
-      const isAdmin =
-        request.auth.rol === 'ADMIN';
+const isResponsible =
+  Number(existingActivity.id_responsable) ===
+  request.auth.idUsuario;
 
-      if (!isCreator && !isAdmin) {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'No tienes permiso para editar esta actividad.',
-        });
-      }
+const isAdmin =
+  request.auth.rol === 'ADMIN';
+
+if (
+  !isCreator &&
+  !isResponsible &&
+  !isAdmin
+) {
+  return response.status(403).json({
+    ok: false,
+    message:
+      'No participas en esta actividad.',
+  });
+}
+
+const estatusActual =
+  existingActivity.estatus;
+
+const cambioEstatus =
+  estatus !== estatusActual;
+
+if (cambioEstatus) {
+  const responsablePuedeIniciar =
+    isResponsible &&
+    estatusActual === 'PENDIENTE' &&
+    estatus === 'EN_PROCESO';
+
+  const responsablePuedeEnviarRevision =
+    isResponsible &&
+    estatusActual === 'EN_PROCESO' &&
+    estatus === 'EN_REVISION';
+
+  const creadorPuedeCompletar =
+    isCreator &&
+    estatusActual === 'EN_REVISION' &&
+    estatus === 'COMPLETADA';
+
+  const creadorPuedeDevolver =
+    isCreator &&
+    estatusActual === 'EN_REVISION' &&
+    estatus === 'EN_PROCESO';
+
+  const transicionPermitida =
+    responsablePuedeIniciar ||
+    responsablePuedeEnviarRevision ||
+    creadorPuedeCompletar ||
+    creadorPuedeDevolver;
+
+  if (!transicionPermitida) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        `No está permitido cambiar de ${estatusActual} a ${estatus}.`,
+    });
+  }
+
+  if (
+    responsablePuedeEnviarRevision &&
+    evidencias.length === 0
+  ) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'Debes registrar al menos una evidencia antes de enviar la actividad a revisión.',
+    });
+  }
+}
+
+const datosGeneralesCambiaron =
+  titulo !== existingActivity.titulo ||
+  descripcion !==
+    (existingActivity.descripcion || '') ||
+  fechaLimite !==
+    existingActivity.fecha_limite ||
+  prioridad !==
+    existingActivity.prioridad;
+
+if (
+  datosGeneralesCambiaron &&
+  !isCreator &&
+  !isAdmin
+) {
+  return response.status(403).json({
+    ok: false,
+    message:
+      'El responsable solo puede administrar evidencias y cambiar el estatus permitido.',
+  });
+}
+
 
       if (responsableProvisto && !isAdmin) {
         return response.status(403).json({

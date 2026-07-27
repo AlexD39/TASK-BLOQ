@@ -218,6 +218,8 @@ export default function DashboardPage() {
     }
   }
 
+  
+
   const indicators = useMemo(() => {
     const total = activities.length;
 
@@ -290,7 +292,10 @@ export default function DashboardPage() {
       prioridad: savedActivity.prioridad,
       estatus: savedActivity.estatus,
       comentarios: 0,
-      evidencias: 0,
+      evidencias: 0,evidencias:
+  Array.isArray(savedActivity.evidencias)
+    ? savedActivity.evidencias
+    : activity.evidencias,
     };
 
     setActivities((currentActivities) => [
@@ -568,6 +573,7 @@ export default function DashboardPage() {
 <ActivityEditModal
   isOpen={isEditModalOpen}
   activity={selectedActivity}
+  currentUser={user}
   onClose={handleCloseEditModal}
   onSubmit={handleUpdateActivity}
   users={users}
