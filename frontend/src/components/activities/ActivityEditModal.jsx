@@ -20,24 +20,62 @@ import {
 
 import '../../styles/activity-modal.css';
 
-const STATUS_OPTIONS = [
-  {
-    value: 'PENDIENTE',
-    label: 'Pendiente',
-  },
-  {
-    value: 'EN_PROCESO',
-    label: 'En proceso',
-  },
-  {
-    value: 'EN_REVISION',
-    label: 'En revisión',
-  },
-  {
-    value: 'COMPLETADA',
-    label: 'Completada',
-  },
-];
+
+function getAllowedStatuses({
+  currentStatus,
+  isCreator,
+  isResponsible,
+}) {
+  const options = [
+    {
+      value: currentStatus,
+      label: {
+        PENDIENTE: 'Pendiente',
+        EN_PROCESO: 'En proceso',
+        EN_REVISION: 'En revisión',
+        COMPLETADA: 'Completada',
+      }[currentStatus] || currentStatus,
+    },
+  ];
+
+  if (
+    isResponsible &&
+    currentStatus === 'PENDIENTE'
+  ) {
+    options.push({
+      value: 'EN_PROCESO',
+      label: 'Iniciar actividad',
+    });
+  }
+
+  if (
+    isResponsible &&
+    currentStatus === 'EN_PROCESO'
+  ) {
+    options.push({
+      value: 'EN_REVISION',
+      label: 'Enviar a revisión',
+    });
+  }
+
+  if (
+    isCreator &&
+    currentStatus === 'EN_REVISION'
+  ) {
+    options.push(
+      {
+        value: 'EN_PROCESO',
+        label: 'Devolver a proceso',
+      },
+      {
+        value: 'COMPLETADA',
+        label: 'Completar actividad',
+      },
+    );
+  }
+
+  return options;
+}
 
 const INITIAL_TOUCHED = {
   titulo: false,
@@ -60,12 +98,15 @@ function normalizeDate(dateValue) {
 export default function ActivityEditModal({
   isOpen,
   activity,
+  currentUser,
   onClose,
   onSubmit,
   users = [],
   canAssignResponsible = false,
 }) {
 
+
+  
 const [form, setForm] = useState({
   titulo: '',
   descripcion: '',
@@ -75,6 +116,36 @@ const [form, setForm] = useState({
   estatus: '',
   evidencias: [''],
 });
+
+const currentUserId =
+  Number(currentUser?.id);
+
+const isCreator =
+  Number(activity?.idCreador) ===
+  currentUserId;
+
+const isResponsible =
+  Number(activity?.idResponsable) ===
+  currentUserId;
+
+const isAdmin =
+  currentUser?.role === 'ADMIN';
+
+const canEditGeneralFields =
+  isCreator || isAdmin;
+
+const canEditEvidence =
+  isCreator ||
+  isResponsible ||
+  isAdmin;
+
+const allowedStatuses =
+  getAllowedStatuses({
+    currentStatus:
+      activity?.estatus || '',
+    isCreator,
+    isResponsible,
+  });
 
   const [errors, setErrors] =
     useState({});
@@ -288,31 +359,52 @@ function handleRemoveEvidence(
 
     setSubmitError('');
 
-    const cleanData = {
-      titulo: form.titulo.trim(),
-      descripcion:
-        form.descripcion.trim(),
-      ...(canAssignResponsible
-        ? {
-            idResponsable:
-              form.idResponsable || null,
-          }
-        : {}),
-      fechaLimite:
-        form.fechaLimite,
-      prioridad:
-        form.prioridad,
-      estatus:
-        form.estatus,
-      evidencias: form.evidencias
-  .map((evidencia) =>
-    evidencia.trim(),
-  )
-  .filter(Boolean),  
-    };
+const cleanData = {
+  titulo: form.titulo.trim(),
+  descripcion:
+    form.descripcion.trim(),
 
-    const formErrors =
-      validateActivityForm(cleanData);
+  ...(canAssignResponsible
+    ? {
+        idResponsable:
+          form.idResponsable || null,
+      }
+    : {}),
+
+  fechaLimite:
+    form.fechaLimite,
+
+  prioridad:
+    form.prioridad,
+
+  estatus:
+    form.estatus,
+
+  evidencias: form.evidencias
+    .map((evidencia) =>
+      evidencia.trim(),
+    )
+    .filter(Boolean),
+};
+
+const isSendingToReview =
+  activity.estatus === 'EN_PROCESO' &&
+  cleanData.estatus === 'EN_REVISION';
+
+if (
+  isSendingToReview &&
+  cleanData.evidencias.length === 0
+) {
+  setSubmitError(
+    'Agrega al menos una evidencia antes de enviar la actividad a revisión.',
+  );
+
+  return;
+}
+
+const formErrors =
+  validateActivityForm(cleanData);
+
 
     setTouched({
       titulo: true,
@@ -419,18 +511,22 @@ function handleRemoveEvidence(
               </label>
 
               <input
-                id="edit-titulo"
-                name="titulo"
-                type="text"
-                value={form.titulo}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                maxLength={180}
-                aria-invalid={
-                  hasError('titulo')
-                }
-                autoFocus
-              />
+  id="edit-titulo"
+  name="titulo"
+  type="text"
+  value={form.titulo}
+  onChange={handleChange}
+  onBlur={handleBlur}
+  maxLength={180}
+  aria-invalid={
+    hasError('titulo')
+  }
+  disabled={
+    saving ||
+    !canEditGeneralFields
+  }
+  autoFocus
+/>
 
               {hasError('titulo') && (
                 <p className="activity-field__error">
@@ -451,18 +547,22 @@ function handleRemoveEvidence(
               </label>
 
               <textarea
-                id="edit-descripcion"
-                name="descripcion"
-                value={form.descripcion}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                rows={4}
-                maxLength={1000}
-                placeholder="Descripción de la actividad"
-                aria-invalid={
-                  hasError('descripcion')
-                }
-              />
+  id="edit-descripcion"
+  name="descripcion"
+  value={form.descripcion}
+  onChange={handleChange}
+  onBlur={handleBlur}
+  rows={4}
+  maxLength={1000}
+  placeholder="Descripción de la actividad"
+  aria-invalid={
+    hasError('descripcion')
+  }
+  disabled={
+    saving ||
+    !canEditGeneralFields
+  }
+/>
 
               <div className="activity-field__meta">
                 <span>
@@ -487,7 +587,10 @@ function handleRemoveEvidence(
       type="button"
       className="activity-evidence-add"
       onClick={handleAddEvidence}
-      disabled={saving}
+      disabled={
+  saving ||
+  !canEditEvidence
+}
     >
       <Plus size={17} />
       Agregar evidencia
@@ -517,7 +620,10 @@ function handleRemoveEvidence(
                 )
               }
               placeholder="https://ejemplo.com/evidencia"
-              disabled={saving}
+              disabled={
+  saving ||
+  !canEditEvidence
+}
             />
           </div>
 
@@ -527,7 +633,10 @@ function handleRemoveEvidence(
             onClick={() =>
               handleRemoveEvidence(index)
             }
-            disabled={saving}
+            disabled={
+  saving ||
+  !canEditEvidence
+}
             aria-label="Eliminar evidencia"
           >
             <Trash2 size={18} />
@@ -614,20 +723,22 @@ function handleRemoveEvidence(
                     strokeWidth={1.7}
                   />
 
-                  <input
-                    id="edit-fecha"
-                    name="fechaLimite"
-                    type="date"
-                    value={form.fechaLimite}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    aria-invalid={
-                      hasError(
-                        'fechaLimite',
-                      )
-                    }
-                  />
-                </div>
+                 <input
+  id="edit-fecha"
+  name="fechaLimite"
+  type="date"
+  value={form.fechaLimite}
+  onChange={handleChange}
+  onBlur={handleBlur}
+  aria-invalid={
+    hasError('fechaLimite')
+  }
+  disabled={
+    saving ||
+    !canEditGeneralFields
+  }
+/>
+</div>
 
                 {hasError(
                   'fechaLimite',
@@ -650,31 +761,19 @@ function handleRemoveEvidence(
                 </label>
 
                 <select
-                  id="edit-prioridad"
-                  name="prioridad"
-                  value={form.prioridad}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  aria-invalid={
-                    hasError('prioridad')
-                  }
-                >
-                  <option value="">
-                    Seleccionar...
-                  </option>
-
-                  <option value="ALTA">
-                    Alta
-                  </option>
-
-                  <option value="MEDIA">
-                    Media
-                  </option>
-
-                  <option value="BAJA">
-                    Baja
-                  </option>
-                </select>
+  id="edit-prioridad"
+  name="prioridad"
+  value={form.prioridad}
+  onChange={handleChange}
+  onBlur={handleBlur}
+  aria-invalid={
+    hasError('prioridad')
+  }
+  disabled={
+    saving ||
+    !canEditGeneralFields
+  }
+></select>
 
                 {hasError('prioridad') && (
                   <p className="activity-field__error">
@@ -685,55 +784,57 @@ function handleRemoveEvidence(
             </div>
 
             <fieldset
-              className={`activity-status ${
-                hasError('estatus')
-                  ? 'activity-status--error'
-                  : ''
-              }`}
-            >
-              <legend>
-                Estatus <span>*</span>
-              </legend>
+  className={`activity-status ${
+    hasError('estatus')
+      ? 'activity-status--error'
+      : ''
+  }`}
+>
+  <legend>
+    Estatus <span>*</span>
+  </legend>
 
-              <div className="activity-status__grid">
-                {STATUS_OPTIONS.map(
-                  (status) => (
-                    <label
-                      key={status.value}
-                      className={`activity-status__option ${
-                        form.estatus ===
-                        status.value
-                          ? 'activity-status__option--selected'
-                          : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="estatus"
-                        value={status.value}
-                        checked={
-                          form.estatus ===
-                          status.value
-                        }
-                        onChange={handleChange}
-                      />
+  <div className="activity-status__grid">
+    {allowedStatuses.map((status) => (
+      <label
+        key={status.value}
+        className={`activity-status__option ${
+          form.estatus === status.value
+            ? 'activity-status__option--selected'
+            : ''
+        }`}
+      >
+        <input
+          type="radio"
+          name="estatus"
+          value={status.value}
+          checked={
+            form.estatus === status.value
+          }
+          onChange={handleChange}
+          disabled={saving}
+        />
 
-                      <span className="activity-status__radio" />
+        <span className="activity-status__radio" />
 
-                      <span>
-                        {status.label}
-                      </span>
-                    </label>
-                  ),
-                )}
-              </div>
+        <span>{status.label}</span>
+      </label>
+    ))}
+  </div>
 
-              {hasError('estatus') && (
-                <p className="activity-field__error">
-                  {errors.estatus}
-                </p>
-              )}
-            </fieldset>
+  {!isCreator && !isResponsible && (
+    <small className="activity-field__help">
+      No participas en esta actividad, por lo
+      que no puedes cambiar su estatus.
+    </small>
+  )}
+
+  {hasError('estatus') && (
+    <p className="activity-field__error">
+      {errors.estatus}
+    </p>
+  )}
+</fieldset>
           </div>
 
           <footer className="activity-form__footer">

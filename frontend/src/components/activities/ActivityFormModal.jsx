@@ -32,27 +32,7 @@ const INITIAL_TOUCHED = {
   idResponsable: false,
   fechaLimite: false,
   prioridad: false,
-  estatus: false,
 };
-
-const STATUS_OPTIONS = [
-  {
-    value: 'PENDIENTE',
-    label: 'Pendiente',
-  },
-  {
-    value: 'EN_PROCESO',
-    label: 'En proceso',
-  },
-  {
-    value: 'EN_REVISION',
-    label: 'En revisión',
-  },
-  {
-    value: 'COMPLETADA',
-    label: 'Completada',
-  },
-];
 
 function ActivityFormModal({
   isOpen,
@@ -194,20 +174,19 @@ function ActivityFormModal({
         form.fechaLimite,
       prioridad:
         form.prioridad,
-      estatus:
-        form.estatus,
+      estatus: 'PENDIENTE',
     };
 
     const formErrors =
       validateActivityForm(cleanData);
 
     setTouched({
-      titulo: true,
-      descripcion: true,
-      fechaLimite: true,
-      prioridad: true,
-      estatus: true,
-    });
+  titulo: true,
+  descripcion: true,
+  idResponsable: true,
+  fechaLimite: true,
+  prioridad: true,
+});
 
     setErrors(formErrors);
 
@@ -547,57 +526,12 @@ function ActivityFormModal({
                 )}
               </div>
             </div>
-
-            <fieldset
-              className={`activity-status ${
-                hasError('estatus')
-                  ? 'activity-status--error'
-                  : ''
-              }`}
-            >
-              <legend>
-                Estatus <span>*</span>
-              </legend>
-
-              <div className="activity-status__grid">
-                {STATUS_OPTIONS.map(
-                  (status) => (
-                    <label
-                      key={status.value}
-                      className={`activity-status__option ${
-                        form.estatus ===
-                        status.value
-                          ? 'activity-status__option--selected'
-                          : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="estatus"
-                        value={status.value}
-                        checked={
-                          form.estatus ===
-                          status.value
-                        }
-                        onChange={handleChange}
-                      />
-
-                      <span className="activity-status__radio" />
-
-                      <span>
-                        {status.label}
-                      </span>
-                    </label>
-                  ),
-                )}
-              </div>
-
-              {hasError('estatus') && (
-                <p className="activity-field__error">
-                  {errors.estatus}
-                </p>
-              )}
-            </fieldset>
+            <div className="activity-field">
+  <small className="activity-field__help">
+    La actividad se registrará inicialmente
+    con el estatus Pendiente.
+  </small>
+</div>
           </div>
 
           <footer className="activity-form__footer">
