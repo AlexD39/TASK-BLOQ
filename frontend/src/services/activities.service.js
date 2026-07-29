@@ -130,3 +130,60 @@ export async function updateActivity(
 
   return data;
 }
+
+export async function getActivityComments(
+  activityId,
+) {
+  const response = await apiFetch(
+    `/activities/${activityId}/comments`,
+    {
+      method: 'GET',
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible consultar los comentarios.',
+      ),
+    );
+  }
+
+  return data;
+}
+
+export async function createActivityComment(
+  activityId,
+  commentData,
+) {
+  const response = await apiFetch(
+    `/activities/${activityId}/comments`,
+    {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(commentData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible registrar el comentario.',
+      ),
+    );
+  }
+
+  return data;
+}

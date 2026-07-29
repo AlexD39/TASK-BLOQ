@@ -2,12 +2,13 @@ import {
   useEffect,
   useState,
 } from 'react';
-
 import {
   CalendarDays,
   Link,
+  MessageCircle,
   Plus,
   Save,
+  Send,
   Trash2,
   UserRound,
   X,
@@ -17,6 +18,11 @@ import {
   validateActivityField,
   validateActivityForm,
 } from '../../utils/activityValidation.js';
+
+import {
+  createActivityComment,
+  getActivityComments,
+} from '../../services/activities.service.js';
 
 import '../../styles/activity-modal.css';
 
@@ -95,17 +101,33 @@ function normalizeDate(dateValue) {
   return dateValue.slice(0, 10);
 }
 
+function formatCommentDate(dateValue) {
+  if (!dateValue) {
+    return '';
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
 export default function ActivityEditModal({
   isOpen,
   activity,
   currentUser,
   onClose,
   onSubmit,
+  onCommentCreated,
   users = [],
   canAssignResponsible = false,
 }) {
-
-
   
 const [form, setForm] = useState({
   titulo: '',
@@ -128,16 +150,12 @@ const isResponsible =
   Number(activity?.idResponsable) ===
   currentUserId;
 
-const isAdmin =
-  currentUser?.role === 'ADMIN';
-
 const canEditGeneralFields =
-  isCreator || isAdmin;
+  isCreator;
 
 const canEditEvidence =
   isCreator ||
-  isResponsible ||
-  isAdmin;
+  isResponsible;
 
 const allowedStatuses =
   getAllowedStatuses({
@@ -158,6 +176,91 @@ const allowedStatuses =
 
   const [submitError, setSubmitError] =
     useState('');
+
+const [comments, setComments] =
+  useState([]);
+
+const [commentsLoading, setCommentsLoading] =
+  useState(false);
+
+const [commentsError, setCommentsError] =
+  useState('');
+
+const [newComment, setNewComment] =
+  useState('');
+
+const [commentSaving, setCommentSaving] =
+  useState(false);
+
+const isAdmin =
+  currentUser?.role === 'ADMIN';
+
+const canViewComments =
+  isCreator ||
+  isResponsible ||
+  isAdmin;
+
+const canComment =
+  isCreator ||
+  isResponsible;
+
+
+useEffect(() => {
+  let componentIsMounted = true;
+
+  if (!isOpen || !activity?.id) {
+    return undefined;
+  }
+
+  setComments([]);
+  setNewComment('');
+  setCommentsError('');
+
+  if (!canViewComments) {
+  return undefined;
+}
+
+
+  async function loadComments() {
+    try {
+      setCommentsLoading(true);
+
+      const result =
+        await getActivityComments(
+          activity.id,
+        );
+
+      if (componentIsMounted) {
+        setComments(
+          Array.isArray(result.comentarios)
+            ? result.comentarios
+            : [],
+        );
+      }
+    } catch (error) {
+      if (componentIsMounted) {
+        setCommentsError(
+          error.message ||
+            'No fue posible cargar los comentarios.',
+        );
+      }
+    } finally {
+      if (componentIsMounted) {
+        setCommentsLoading(false);
+      }
+    }
+  }
+
+  loadComments();
+
+  return () => {
+    componentIsMounted = false;
+  };
+}, [
+  isOpen,
+  activity?.id,
+  canViewComments,
+]);
 
   useEffect(() => {
     if (!isOpen || !activity) {
@@ -353,6 +456,65 @@ function handleRemoveEvidence(
       onClose();
     }
   }
+
+async function handleCreateComment() {
+  const cleanComment =
+    newComment.trim();
+
+  setCommentsError('');
+
+  if (!cleanComment) {
+    setCommentsError(
+      'Escribe un comentario antes de enviarlo.',
+    );
+
+    return;
+  }
+
+  if (cleanComment.length > 1000) {
+    setCommentsError(
+      'El comentario no puede superar 1000 caracteres.',
+    );
+
+    return;
+  }
+
+  try {
+    setCommentSaving(true);
+
+    const result =
+      await createActivityComment(
+        activity.id,
+        {
+          comentario: cleanComment,
+        },
+      );
+
+    setComments((currentComments) => [
+      ...currentComments,
+      result.comentario,
+    ]);
+
+    setNewComment('');
+
+    if (
+      typeof onCommentCreated ===
+      'function'
+    ) {
+      onCommentCreated(
+        activity.id,
+        result.totalComentarios,
+      );
+    }
+  } catch (error) {
+    setCommentsError(
+      error.message ||
+        'No fue posible registrar el comentario.',
+    );
+  } finally {
+    setCommentSaving(false);
+  }
+}
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -577,6 +739,141 @@ const formErrors =
               )}
             </div>
 
+<section className="activity-comments">
+  <div className="activity-comments__header">
+    <div>
+      <h3>
+        <MessageCircle size={19} />
+        Comentarios
+      </h3>
+
+      <p>
+        Seguimiento entre el creador y el
+        responsable.
+      </p>
+    </div>
+
+    <span className="activity-comments__count">
+      {comments.length}
+    </span>
+  </div>
+
+  {!canViewComments ? (
+  <div className="activity-comments__empty">
+    No tienes permiso para consultar los
+    comentarios de esta actividad.
+  </div>
+) : (
+    <>
+      <div className="activity-comments__list">
+        {commentsLoading && (
+          <div className="activity-comments__empty">
+            Cargando comentarios...
+          </div>
+        )}
+
+        {!commentsLoading &&
+          comments.length === 0 && (
+            <div className="activity-comments__empty">
+              Todavía no hay comentarios.
+            </div>
+          )}
+
+        {!commentsLoading &&
+          comments.map((comment) => (
+            <article
+              className="activity-comment"
+              key={comment.id}
+            >
+              <div className="activity-comment__avatar">
+                {String(
+                  comment.autor || 'U',
+                )
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+
+              <div className="activity-comment__content">
+                <div className="activity-comment__meta">
+                  <strong>
+                    {comment.autor ||
+                      'Usuario'}
+                  </strong>
+
+                  <time>
+                    {formatCommentDate(
+                      comment.creadoEn,
+                    )}
+                  </time>
+                </div>
+
+                <p>{comment.comentario}</p>
+              </div>
+            </article>
+          ))}
+      </div>
+
+      {commentsError && (
+        <p
+          className="activity-comments__error"
+          role="alert"
+        >
+          {commentsError}
+        </p>
+      )}
+
+      {canComment ? (
+  <div className="activity-comments__composer">
+    <textarea
+      value={newComment}
+      onChange={(event) => {
+        setNewComment(
+          event.target.value,
+        );
+
+        setCommentsError('');
+      }}
+      rows={3}
+      maxLength={1000}
+      placeholder="Escribe un comentario..."
+      disabled={
+        commentSaving || saving
+      }
+    />
+
+    <div className="activity-comments__composer-footer">
+      <span>
+        {newComment.length}/1000
+      </span>
+
+      <button
+        type="button"
+        onClick={handleCreateComment}
+        disabled={
+          commentSaving ||
+          saving ||
+          !newComment.trim()
+        }
+      >
+        <Send size={17} />
+
+        {commentSaving
+          ? 'Enviando...'
+          : 'Comentar'}
+      </button>
+    </div>
+  </div>
+) : (
+  <div className="activity-comments__readonly">
+    Vista administrativa de solo lectura.
+  </div>
+)}
+
+    </>
+  )}
+</section>
+
             <div className="activity-field">
   <div className="activity-evidence-header">
     <label>
@@ -699,8 +996,8 @@ const formErrors =
 
               {canAssignResponsible && (
                 <small className="activity-field__help">
-                  Solo un administrador puede
-                  asignar responsables.
+                  Solo el creador puede cambiar 
+                  al responsable.
                 </small>
               )}
             </div>
@@ -760,7 +1057,7 @@ const formErrors =
                   Prioridad <span>*</span>
                 </label>
 
-                <select
+<select
   id="edit-prioridad"
   name="prioridad"
   value={form.prioridad}
@@ -773,7 +1070,23 @@ const formErrors =
     saving ||
     !canEditGeneralFields
   }
-></select>
+>
+  <option value="">
+    Seleccionar...
+  </option>
+
+  <option value="ALTA">
+    Alta
+  </option>
+
+  <option value="MEDIA">
+    Media
+  </option>
+
+  <option value="BAJA">
+    Baja
+  </option>
+</select>
 
                 {hasError('prioridad') && (
                   <p className="activity-field__error">

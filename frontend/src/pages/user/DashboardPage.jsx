@@ -45,7 +45,7 @@ export default function DashboardPage() {
     useState([]);
 
   const canAssignResponsible =
-    user?.role === 'ADMIN';
+    user?.role === 'USUARIO';
 
   useEffect(() => {
     let componentIsMounted = true;
@@ -181,8 +181,12 @@ export default function DashboardPage() {
                 : savedActivity.fechaLimite,
             prioridad:
               savedActivity.prioridad,
-            estatus:
-              savedActivity.estatus,
+            evidencias:
+  Array.isArray(
+    savedActivity.evidencias,
+  )
+    ? savedActivity.evidencias
+    : activity.evidencias,
           };
         }),
       );
@@ -276,27 +280,54 @@ export default function DashboardPage() {
     const savedActivity = result.actividad;
 
     const newActivity = {
-      id: savedActivity.id_actividad,
-      titulo: savedActivity.titulo,
-      descripcion:
-        savedActivity.descripcion || '',
-      idResponsable:
-        savedActivity.id_responsable ?? null,
-      responsable:
-        savedActivity.responsable?.nombre ||
-        'Sin responsable',
-      fechaLimite:
-    typeof savedActivity.fecha_limite === 'string'
-    ? savedActivity.fecha_limite.slice(0, 10)
-    : savedActivity.fecha_limite,
-      prioridad: savedActivity.prioridad,
-      estatus: savedActivity.estatus,
-      comentarios: 0,
-      evidencias: 0,evidencias:
-  Array.isArray(savedActivity.evidencias)
-    ? savedActivity.evidencias
-    : activity.evidencias,
-    };
+  id: savedActivity.id_actividad,
+
+  titulo:
+    savedActivity.titulo,
+
+  descripcion:
+    savedActivity.descripcion || '',
+
+  idCreador:
+    savedActivity.id_creador ??
+    user?.id ??
+    null,
+
+  creador:
+    user?.name || 'Usuario',
+
+  idResponsable:
+    savedActivity.id_responsable ??
+    null,
+
+  responsable:
+    savedActivity.responsable?.nombre ||
+    'Sin responsable',
+
+  fechaLimite:
+    typeof savedActivity.fecha_limite ===
+    'string'
+      ? savedActivity.fecha_limite.slice(
+          0,
+          10,
+        )
+      : savedActivity.fecha_limite,
+
+  prioridad:
+    savedActivity.prioridad,
+
+  estatus:
+    savedActivity.estatus,
+
+  comentarios: 0,
+
+  evidencias:
+    Array.isArray(
+      savedActivity.evidencias,
+    )
+      ? savedActivity.evidencias
+      : [],
+};
 
     setActivities((currentActivities) => [
       newActivity,
@@ -335,6 +366,37 @@ export default function DashboardPage() {
       (activity) => activity.estatus === status,
     );
   }
+
+  function handleCommentCreated(
+  activityId,
+  totalComments,
+) {
+  setActivities((currentActivities) =>
+    currentActivities.map((currentActivity) =>
+      String(currentActivity.id) ===
+      String(activityId)
+        ? {
+            ...currentActivity,
+            comentarios:
+              totalComments,
+          }
+        : currentActivity,
+    ),
+  );
+
+  setSelectedActivity(
+    (currentActivity) =>
+      currentActivity &&
+      String(currentActivity.id) ===
+        String(activityId)
+        ? {
+            ...currentActivity,
+            comentarios:
+              totalComments,
+          }
+        : currentActivity,
+  );
+}
 
   return (
     <div className="taskboard-page">
@@ -576,8 +638,13 @@ export default function DashboardPage() {
   currentUser={user}
   onClose={handleCloseEditModal}
   onSubmit={handleUpdateActivity}
+  onCommentCreated={
+    handleCommentCreated
+  }
   users={users}
-  canAssignResponsible={canAssignResponsible}
+  canAssignResponsible={
+    canAssignResponsible
+  }
 />
 
     </div>
