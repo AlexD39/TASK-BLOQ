@@ -1,71 +1,137 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext.jsx'; // <--- Importamos el contexto y el hook
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+} from 'react-router-dom';
+
+import {
+  AuthProvider,
+  useAuth,
+} from './contexts/AuthContext.jsx';
+
+import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
 
 import LoginPage from './pages/auth/LoginPage.jsx';
 import DashboardPage from './pages/user/DashboardPage.jsx';
+import AdminUsersPage from './pages/admin/AdminUsersPage.jsx';
 
-// Componente para proteger rutas privadas
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
+function getHomeRoute(user) {
+  if (user?.role === 'ADMIN') {
+    return '/admin/usuarios';
+  }
 
-  if (loading) return <div>Cargando...</div>; // Evita parpadeos mientras lee el localStorage
+  return '/dashboard';
+}
+
+function HomeRedirect() {
+  const {
+    user,
+    loading,
+  } = useAuth();
+
+  if (loading) {
+    return <div>Cargando...</div>;
+  }
 
   if (!user) {
-    // Si no está logueado, patitas a la calle (al login)
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  return (
+    <Navigate
+      to={getHomeRoute(user)}
+      replace
+    />
+  );
+}
+
+function PublicRoute({
+  children,
+}) {
+  const {
+    user,
+    loading,
+  } = useAuth();
+
+  if (loading) {
+    return <div>Cargando...</div>;
+  }
+
+  if (user) {
+    return (
+      <Navigate
+        to={getHomeRoute(user)}
+        replace
+      />
+    );
   }
 
   return children;
 }
 
-// Componente para proteger rutas públicas (ej. que un logueado no pueda volver al login)
-function PublicRoute({ children }) {
-  const { user, loading } = useAuth();
+function AppRoutes() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={<HomeRedirect />}
+        />
 
-  if (loading) return <div>Cargando...</div>;
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          }
+        />
 
-  if (user) {
-    // Si ya está logueado, lo mandamos directo al dashboard
-    return <Navigate to="/dashboard" replace />;
-  }
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                'USUARIO',
+              ]}
+            >
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
 
-  return children;
+        <Route
+          path="/admin/usuarios"
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                'ADMIN',
+              ]}
+            >
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="*"
+          element={<HomeRedirect />}
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 function App() {
   return (
-    <AuthProvider> {/* <--- Envolvemos toda la app con el proveedor de autenticación */}
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={<Navigate to="/login" replace />}
-          />
-
-          <Route
-            path="/login"
-            element={
-              <PublicRoute>
-                <LoginPage />
-              </PublicRoute>
-            }
-          />
-
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="*"
-            element={<Navigate to="/login" replace />}
-          />
-        </Routes>
-      </BrowserRouter>
+    <AuthProvider>
+      <AppRoutes />
     </AuthProvider>
   );
 }

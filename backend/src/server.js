@@ -663,6 +663,816 @@ app.get(
 );
 
 /* =========================================
+   ADMINISTRACIÓN DE USUARIOS
+========================================= */
+
+/*
+ * LISTAR TODAS LAS CUENTAS
+ */
+app.get(
+  '/api/admin/users',
+  requireAccessToken,
+  requireAdminRole,
+  async (_request, response) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id_usuario AS id,
+          nombre,
+          correo,
+          rol,
+          estado,
+          creado_en AS "creadoEn",
+          actualizado_en AS "actualizadoEn"
+        FROM usuarios
+        ORDER BY
+          creado_en DESC,
+          id_usuario DESC
+      `);
+
+      return response.status(200).json({
+        ok: true,
+        usuarios: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando usuarios administrativos:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible consultar las cuentas.',
+      });
+    }
+  },
+);
+
+/*
+ * EDITAR UNA CUENTA
+ */
+app.patch(
+  '/api/admin/users/:id',
+  requireAccessToken,
+  requireAdminRole,
+  async (request, response) => {
+    try {
+      const idUsuario = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idUsuario) ||
+        idUsuario <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador del usuario no es válido.',
+        });
+      }
+
+      const nombre =
+        typeof request.body?.nombre === 'string'
+          ? request.body.nombre.trim()
+          : '';
+
+      const correo =
+        typeof request.body?.correo === 'string'
+          ? request.body.correo
+              .trim()
+              .toLowerCase()
+          : '';
+
+      const rol =
+        typeof request.body?.rol === 'string'
+          ? request.body.rol
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const errors = {};
+
+      if (!nombre) {
+        errors.nombre =
+          'El nombre es obligatorio.';
+      } else if (nombre.length < 3) {
+        errors.nombre =
+          'El nombre debe contener al menos 3 caracteres.';
+      } else if (nombre.length > 120) {
+        errors.nombre =
+          'El nombre no puede superar 120 caracteres.';
+      }
+
+      if (!correo) {
+        errors.correo =
+          'El correo es obligatorio.';
+      } else if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          correo,
+        )
+      ) {
+        errors.correo =
+          'Ingresa un correo válido.';
+      } else if (correo.length > 160) {
+        errors.correo =
+          'El correo no puede superar 160 caracteres.';
+      }
+
+      const rolesPermitidos = [
+        'ADMIN',
+        'USUARIO',
+      ];
+
+      if (!rolesPermitidos.includes(rol)) {
+        errors.rol =
+          'El rol debe ser ADMIN o USUARIO.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la cuenta.',
+          errors,
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT
+            id_usuario,
+            rol
+          FROM usuarios
+          WHERE id_usuario = $1
+          LIMIT 1
+        `,
+        [idUsuario],
+      );
+
+      const existingUser =
+        existingResult.rows[0];
+
+      if (!existingUser) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La cuenta solicitada no existe.',
+        });
+      }
+
+      if (
+        idUsuario === request.auth.idUsuario &&
+        rol !== 'ADMIN'
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'No puedes retirar tu propio rol de administrador.',
+        });
+      }
+
+      const duplicatedEmailResult =
+        await pool.query(
+          `
+            SELECT id_usuario
+            FROM usuarios
+            WHERE LOWER(correo) = LOWER($1)
+              AND id_usuario <> $2
+            LIMIT 1
+          `,
+          [
+            correo,
+            idUsuario,
+          ],
+        );
+
+      if (duplicatedEmailResult.rows[0]) {
+        return response.status(409).json({
+          ok: false,
+          message:
+            'Ya existe otra cuenta registrada con ese correo.',
+          errors: {
+            correo:
+              'El correo ya está registrado.',
+          },
+        });
+      }
+
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+          `
+            UPDATE usuarios
+            SET
+              nombre = $1,
+              correo = $2,
+              rol = $3
+            WHERE id_usuario = $4
+            RETURNING
+              id_usuario AS id,
+              nombre,
+              correo,
+              rol,
+              estado,
+              creado_en AS "creadoEn",
+              actualizado_en AS "actualizadoEn"
+          `,
+          [
+            nombre,
+            correo,
+            rol,
+            idUsuario,
+          ],
+        );
+
+        if (existingUser.rol !== rol) {
+          await client.query(
+            `
+              UPDATE refresh_tokens
+              SET revocado_en = NOW()
+              WHERE id_usuario = $1
+                AND revocado_en IS NULL
+            `,
+            [idUsuario],
+          );
+        }
+
+        await client.query('COMMIT');
+
+        return response.status(200).json({
+          ok: true,
+          message:
+            'Cuenta actualizada correctamente.',
+          usuario: result.rows[0],
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      if (error?.code === '23505') {
+        return response.status(409).json({
+          ok: false,
+          message:
+            'Ya existe otra cuenta registrada con ese correo.',
+        });
+      }
+
+      console.error(
+        'Error editando usuario administrativo:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible actualizar la cuenta.',
+      });
+    }
+  },
+);
+
+/*
+ * ACTIVAR O DESACTIVAR UNA CUENTA
+ */
+app.patch(
+  '/api/admin/users/:id/status',
+  requireAccessToken,
+  requireAdminRole,
+  async (request, response) => {
+    try {
+      const idUsuario = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idUsuario) ||
+        idUsuario <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador del usuario no es válido.',
+        });
+      }
+
+      const estado =
+        typeof request.body?.estado === 'string'
+          ? request.body.estado
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const estadosPermitidos = [
+        'ACTIVO',
+        'INACTIVO',
+      ];
+
+      if (
+        !estadosPermitidos.includes(estado)
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El estado debe ser ACTIVO o INACTIVO.',
+          errors: {
+            estado:
+              'Selecciona un estado válido.',
+          },
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT
+            id_usuario,
+            nombre,
+            correo,
+            rol,
+            estado
+          FROM usuarios
+          WHERE id_usuario = $1
+          LIMIT 1
+        `,
+        [idUsuario],
+      );
+
+      const existingUser =
+        existingResult.rows[0];
+
+      if (!existingUser) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La cuenta solicitada no existe.',
+        });
+      }
+
+      if (
+        idUsuario === request.auth.idUsuario &&
+        estado === 'INACTIVO'
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'No puedes desactivar tu propia cuenta.',
+        });
+      }
+
+      if (
+        existingUser.rol === 'ADMIN' &&
+        existingUser.estado === 'ACTIVO' &&
+        estado === 'INACTIVO'
+      ) {
+        const activeAdminsResult =
+          await pool.query(
+            `
+              SELECT COUNT(*)::INTEGER AS total
+              FROM usuarios
+              WHERE rol = 'ADMIN'
+                AND estado = 'ACTIVO'
+                AND id_usuario <> $1
+            `,
+            [idUsuario],
+          );
+
+        const activeAdmins =
+          activeAdminsResult.rows[0].total;
+
+        if (activeAdmins === 0) {
+          return response.status(400).json({
+            ok: false,
+            message:
+              'No puedes desactivar al último administrador activo.',
+          });
+        }
+      }
+
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+          `
+            UPDATE usuarios
+            SET estado = $1
+            WHERE id_usuario = $2
+            RETURNING
+              id_usuario AS id,
+              nombre,
+              correo,
+              rol,
+              estado,
+              creado_en AS "creadoEn",
+              actualizado_en AS "actualizadoEn"
+          `,
+          [
+            estado,
+            idUsuario,
+          ],
+        );
+
+        if (estado === 'INACTIVO') {
+          await client.query(
+            `
+              UPDATE refresh_tokens
+              SET revocado_en = NOW()
+              WHERE id_usuario = $1
+                AND revocado_en IS NULL
+            `,
+            [idUsuario],
+          );
+        }
+
+        await client.query('COMMIT');
+
+        return response.status(200).json({
+          ok: true,
+          message:
+            estado === 'ACTIVO'
+              ? 'Cuenta activada correctamente.'
+              : 'Cuenta desactivada correctamente.',
+          usuario: result.rows[0],
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error(
+        'Error cambiando estado del usuario:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible cambiar el estado de la cuenta.',
+      });
+    }
+  },
+);
+
+/*
+ * RESTABLECER CONTRASEÑA DE UNA CUENTA
+ */
+app.patch(
+  '/api/admin/users/:id/password',
+  requireAccessToken,
+  requireAdminRole,
+  async (request, response) => {
+    try {
+      const idUsuario = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idUsuario) ||
+        idUsuario <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador del usuario no es válido.',
+        });
+      }
+
+      const contrasena =
+        typeof request.body?.contrasena === 'string'
+          ? request.body.contrasena
+          : '';
+
+      const confirmarContrasena =
+        typeof request.body?.confirmarContrasena ===
+        'string'
+          ? request.body.confirmarContrasena
+          : '';
+
+      const errors = {};
+
+      if (!contrasena) {
+        errors.contrasena =
+          'La nueva contraseña es obligatoria.';
+      } else if (contrasena.length < 8) {
+        errors.contrasena =
+          'La contraseña debe contener al menos 8 caracteres.';
+      } else if (contrasena.length > 72) {
+        errors.contrasena =
+          'La contraseña no puede superar 72 caracteres.';
+      }
+
+      if (!confirmarContrasena) {
+        errors.confirmarContrasena =
+          'Confirma la nueva contraseña.';
+      } else if (
+        contrasena !== confirmarContrasena
+      ) {
+        errors.confirmarContrasena =
+          'Las contraseñas no coinciden.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la contraseña.',
+          errors,
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT
+            id_usuario,
+            nombre,
+            correo,
+            estado
+          FROM usuarios
+          WHERE id_usuario = $1
+          LIMIT 1
+        `,
+        [idUsuario],
+      );
+
+      const existingUser =
+        existingResult.rows[0];
+
+      if (!existingUser) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La cuenta solicitada no existe.',
+        });
+      }
+
+      const passwordHash =
+        await bcrypt.hash(
+          contrasena,
+          10,
+        );
+
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+
+        await client.query(
+          `
+            UPDATE usuarios
+            SET password_hash = $1
+            WHERE id_usuario = $2
+          `,
+          [
+            passwordHash,
+            idUsuario,
+          ],
+        );
+
+        await client.query(
+          `
+            UPDATE refresh_tokens
+            SET revocado_en = NOW()
+            WHERE id_usuario = $1
+              AND revocado_en IS NULL
+          `,
+          [idUsuario],
+        );
+
+        await client.query('COMMIT');
+
+        return response.status(200).json({
+          ok: true,
+          message:
+            'Contraseña restablecida correctamente.',
+          usuario: {
+            id: String(
+              existingUser.id_usuario,
+            ),
+            nombre:
+              existingUser.nombre,
+            correo:
+              existingUser.correo,
+            estado:
+              existingUser.estado,
+          },
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error(
+        'Error restableciendo contraseña:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible restablecer la contraseña.',
+      });
+    }
+  },
+);
+
+/*
+ * CREAR UNA CUENTA
+ */
+app.post(
+  '/api/admin/users',
+  requireAccessToken,
+  requireAdminRole,
+  async (request, response) => {
+    try {
+      const nombre =
+        typeof request.body?.nombre === 'string'
+          ? request.body.nombre.trim()
+          : '';
+
+      const correo =
+        typeof request.body?.correo === 'string'
+          ? request.body.correo
+              .trim()
+              .toLowerCase()
+          : '';
+
+      const contrasena =
+        typeof request.body?.contrasena === 'string'
+          ? request.body.contrasena
+          : '';
+
+      const rol =
+        typeof request.body?.rol === 'string'
+          ? request.body.rol
+              .trim()
+              .toUpperCase()
+          : 'USUARIO';
+
+      const errors = {};
+
+      if (!nombre) {
+        errors.nombre =
+          'El nombre es obligatorio.';
+      } else if (nombre.length < 3) {
+        errors.nombre =
+          'El nombre debe contener al menos 3 caracteres.';
+      } else if (nombre.length > 120) {
+        errors.nombre =
+          'El nombre no puede superar 120 caracteres.';
+      }
+
+      if (!correo) {
+        errors.correo =
+          'El correo es obligatorio.';
+      } else if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          correo,
+        )
+      ) {
+        errors.correo =
+          'Ingresa un correo válido.';
+      } else if (correo.length > 160) {
+        errors.correo =
+          'El correo no puede superar 160 caracteres.';
+      }
+
+      if (!contrasena) {
+        errors.contrasena =
+          'La contraseña es obligatoria.';
+      } else if (contrasena.length < 8) {
+        errors.contrasena =
+          'La contraseña debe contener al menos 8 caracteres.';
+      } else if (contrasena.length > 72) {
+        errors.contrasena =
+          'La contraseña no puede superar 72 caracteres.';
+      }
+
+      const rolesPermitidos = [
+        'ADMIN',
+        'USUARIO',
+      ];
+
+      if (!rolesPermitidos.includes(rol)) {
+        errors.rol =
+          'El rol debe ser ADMIN o USUARIO.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la cuenta.',
+          errors,
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT id_usuario
+          FROM usuarios
+          WHERE LOWER(correo) = LOWER($1)
+          LIMIT 1
+        `,
+        [correo],
+      );
+
+      if (existingResult.rows[0]) {
+        return response.status(409).json({
+          ok: false,
+          message:
+            'Ya existe una cuenta registrada con ese correo.',
+          errors: {
+            correo:
+              'El correo ya está registrado.',
+          },
+        });
+      }
+
+      const passwordHash =
+        await bcrypt.hash(
+          contrasena,
+          10,
+        );
+
+      const result = await pool.query(
+        `
+          INSERT INTO usuarios (
+            nombre,
+            correo,
+            password_hash,
+            rol,
+            estado
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            'ACTIVO'
+          )
+          RETURNING
+            id_usuario AS id,
+            nombre,
+            correo,
+            rol,
+            estado,
+            creado_en AS "creadoEn",
+            actualizado_en AS "actualizadoEn"
+        `,
+        [
+          nombre,
+          correo,
+          passwordHash,
+          rol,
+        ],
+      );
+
+      return response.status(201).json({
+        ok: true,
+        message:
+          'Cuenta creada correctamente.',
+        usuario: result.rows[0],
+      });
+    } catch (error) {
+      if (error?.code === '23505') {
+        return response.status(409).json({
+          ok: false,
+          message:
+            'Ya existe una cuenta registrada con ese correo.',
+          errors: {
+            correo:
+              'El correo ya está registrado.',
+          },
+        });
+      }
+
+      console.error(
+        'Error creando usuario administrativo:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible crear la cuenta.',
+      });
+    }
+  },
+);
+
+/* =========================================
    REGISTRAR ACTIVIDAD
 ========================================= */
 
