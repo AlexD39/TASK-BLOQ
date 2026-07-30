@@ -1700,11 +1700,25 @@ app.get(
           a.id_responsable AS "idResponsable",
           responsable.nombre AS responsable,
 
-          (
-            SELECT COUNT(*)::INTEGER
-            FROM comentarios c
-            WHERE c.id_actividad = a.id_actividad
-          ) AS comentarios,
+          COALESCE(
+  (
+    SELECT json_agg(
+      json_build_object(
+        'id', c.id_comentario,
+        'comentario', c.comentario,
+        'creadoEn', c.creado_en,
+        'usuario', u.nombre
+      )
+      ORDER BY c.creado_en
+    )
+    FROM comentarios c
+    INNER JOIN usuarios u
+      ON u.id_usuario = c.id_usuario
+    WHERE c.id_actividad =
+      a.id_actividad
+  ),
+  '[]'::json
+) AS "comentariosDetalle",
 
           COALESCE(
   (
@@ -2223,128 +2237,6 @@ try {
   },
 );
 
-/* =========================================
-   LISTAR COMENTARIOS DE UNA ACTIVIDAD
-========================================= */
-
-app.get(
-  '/api/activities/:id/comments',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const idActividad = Number(
-        request.params.id,
-      );
-
-      if (
-        !Number.isInteger(idActividad) ||
-        idActividad <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la actividad no es válido.',
-        });
-      }
-
-      const activityResult =
-        await pool.query(
-          `
-            SELECT
-              id_actividad,
-              id_creador,
-              id_responsable
-            FROM actividades
-            WHERE id_actividad = $1
-            LIMIT 1
-          `,
-          [idActividad],
-        );
-
-      const activity =
-        activityResult.rows[0];
-
-      if (!activity) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isCreator =
-        Number(activity.id_creador) ===
-        request.auth.idUsuario;
-
-      const isResponsible =
-  Number(activity.id_responsable) ===
-  request.auth.idUsuario;
-
-const isAdmin =
-  request.auth.rol === 'ADMIN';
-
-if (
-  !isCreator &&
-  !isResponsible &&
-  !isAdmin
-) {
-  return response.status(403).json({
-    ok: false,
-    message:
-      'No tienes permiso para consultar los comentarios de esta actividad.',
-  });
-}
-
-
-      const result = await pool.query(
-        `
-          SELECT
-            c.id_comentario AS id,
-            c.comentario,
-            c.creado_en AS "creadoEn",
-
-            u.id_usuario AS "idUsuario",
-            u.nombre AS autor,
-            u.correo AS "correoAutor"
-
-          FROM comentarios c
-
-          INNER JOIN usuarios u
-            ON u.id_usuario = c.id_usuario
-
-          WHERE c.id_actividad = $1
-
-          ORDER BY
-            c.creado_en ASC,
-            c.id_comentario ASC
-        `,
-        [idActividad],
-      );
-
-      return response.status(200).json({
-        ok: true,
-        comentarios: result.rows,
-        total: result.rows.length,
-      });
-    } catch (error) {
-      console.error(
-        'Error consultando comentarios:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible consultar los comentarios.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   REGISTRAR COMENTARIO
-========================================= */
-
 app.post(
   '/api/activities/:id/comments',
   requireAccessToken,
@@ -2354,6 +2246,12 @@ app.post(
         request.params.id,
       );
 
+      const comentario =
+        typeof request.body?.comentario ===
+        'string'
+          ? request.body.comentario.trim()
+          : '';
+
       if (
         !Number.isInteger(idActividad) ||
         idActividad <= 0
@@ -2361,104 +2259,38 @@ app.post(
         return response.status(400).json({
           ok: false,
           message:
-            'El identificador de la actividad no es válido.',
+            'La actividad no es válida.',
         });
       }
 
-      const comentario =
-        typeof request.body?.comentario ===
-        'string'
-          ? request.body.comentario.trim()
-          : '';
-
-      const errors = {};
-
       if (!comentario) {
-        errors.comentario =
-          'El comentario no puede estar vacío.';
-      } else if (comentario.length > 1000) {
-        errors.comentario =
-          'El comentario no puede superar 1000 caracteres.';
-      }
-
-      if (Object.keys(errors).length > 0) {
         return response.status(400).json({
           ok: false,
           message:
-            'Verifica el comentario.',
-          errors,
-        });
-      }
-
-      const activityResult =
-        await pool.query(
-          `
-            SELECT
-              id_actividad,
-              id_creador,
-              id_responsable
-            FROM actividades
-            WHERE id_actividad = $1
-            LIMIT 1
-          `,
-          [idActividad],
-        );
-
-      const activity =
-        activityResult.rows[0];
-
-      if (!activity) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isCreator =
-        Number(activity.id_creador) ===
-        request.auth.idUsuario;
-
-      const isResponsible =
-        Number(activity.id_responsable) ===
-        request.auth.idUsuario;
-
-      if (!isCreator && !isResponsible) {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'Solo los participantes de la actividad pueden agregar comentarios.',
+            'El comentario es obligatorio.',
         });
       }
 
       const result = await pool.query(
         `
-          WITH comentario_insertado AS (
-            INSERT INTO comentarios (
-              id_actividad,
-              id_usuario,
-              comentario
-            )
-            VALUES ($1, $2, $3)
-            RETURNING
-              id_comentario,
-              id_usuario,
-              comentario,
-              creado_en
+          INSERT INTO comentarios (
+            id_actividad,
+            id_usuario,
+            comentario
           )
           SELECT
-            c.id_comentario AS id,
-            c.comentario,
-            c.creado_en AS "creadoEn",
-
-            u.id_usuario AS "idUsuario",
-            u.nombre AS autor,
-            u.correo AS "correoAutor"
-
-          FROM comentario_insertado c
-
-          INNER JOIN usuarios u
-            ON u.id_usuario = c.id_usuario
+            $1,
+            $2,
+            $3
+          WHERE EXISTS (
+            SELECT 1
+            FROM actividades
+            WHERE id_actividad = $1
+          )
+          RETURNING
+            id_comentario AS id,
+            comentario,
+            creado_en AS "creadoEn"
         `,
         [
           idActividad,
@@ -2467,34 +2299,45 @@ app.post(
         ],
       );
 
-      const totalResult =
+      if (result.rows.length === 0) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const userResult =
         await pool.query(
           `
-            SELECT COUNT(*)::INTEGER AS total
-            FROM comentarios
-            WHERE id_actividad = $1
+            SELECT nombre
+            FROM usuarios
+            WHERE id_usuario = $1
           `,
-          [idActividad],
+          [request.auth.idUsuario],
         );
 
       return response.status(201).json({
         ok: true,
         message:
-          'Comentario registrado correctamente.',
-        comentario: result.rows[0],
-        totalComentarios:
-          totalResult.rows[0].total,
+          'Comentario agregado correctamente.',
+        comentario: {
+          ...result.rows[0],
+          usuario:
+            userResult.rows[0]?.nombre ||
+            'Usuario',
+        },
       });
     } catch (error) {
       console.error(
-        'Error registrando comentario:',
+        'Error agregando comentario:',
         error,
       );
 
       return response.status(500).json({
         ok: false,
         message:
-          'No fue posible registrar el comentario.',
+          'No fue posible agregar el comentario.',
       });
     }
   },

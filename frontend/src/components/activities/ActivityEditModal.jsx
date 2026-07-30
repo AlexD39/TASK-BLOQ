@@ -5,7 +5,7 @@ import {
 import {
   CalendarDays,
   Link,
-  MessageCircle,
+  MessageSquare,
   Plus,
   Save,
   Send,
@@ -177,90 +177,15 @@ const allowedStatuses =
   const [submitError, setSubmitError] =
     useState('');
 
-const [comments, setComments] =
+  const [comments, setComments] =
   useState([]);
-
-const [commentsLoading, setCommentsLoading] =
-  useState(false);
-
-const [commentsError, setCommentsError] =
-  useState('');
 
 const [newComment, setNewComment] =
   useState('');
 
-const [commentSaving, setCommentSaving] =
+const [sendingComment, setSendingComment] =
   useState(false);
 
-const isAdmin =
-  currentUser?.role === 'ADMIN';
-
-const canViewComments =
-  isCreator ||
-  isResponsible ||
-  isAdmin;
-
-const canComment =
-  isCreator ||
-  isResponsible;
-
-
-useEffect(() => {
-  let componentIsMounted = true;
-
-  if (!isOpen || !activity?.id) {
-    return undefined;
-  }
-
-  setComments([]);
-  setNewComment('');
-  setCommentsError('');
-
-  if (!canViewComments) {
-  return undefined;
-}
-
-
-  async function loadComments() {
-    try {
-      setCommentsLoading(true);
-
-      const result =
-        await getActivityComments(
-          activity.id,
-        );
-
-      if (componentIsMounted) {
-        setComments(
-          Array.isArray(result.comentarios)
-            ? result.comentarios
-            : [],
-        );
-      }
-    } catch (error) {
-      if (componentIsMounted) {
-        setCommentsError(
-          error.message ||
-            'No fue posible cargar los comentarios.',
-        );
-      }
-    } finally {
-      if (componentIsMounted) {
-        setCommentsLoading(false);
-      }
-    }
-  }
-
-  loadComments();
-
-  return () => {
-    componentIsMounted = false;
-  };
-}, [
-  isOpen,
-  activity?.id,
-  canViewComments,
-]);
 
   useEffect(() => {
     if (!isOpen || !activity) {
@@ -293,6 +218,13 @@ useEffect(() => {
     
 });
 
+setComments(
+  Array.isArray(activity.comentariosDetalle)
+    ? activity.comentariosDetalle
+    : [],
+);
+
+setNewComment('');
 
     setErrors({});
     setTouched(INITIAL_TOUCHED);
@@ -457,62 +389,60 @@ function handleRemoveEvidence(
     }
   }
 
-async function handleCreateComment() {
+  async function handleAddComment() {
   const cleanComment =
     newComment.trim();
 
-  setCommentsError('');
-
   if (!cleanComment) {
-    setCommentsError(
-      'Escribe un comentario antes de enviarlo.',
-    );
-
-    return;
-  }
-
-  if (cleanComment.length > 1000) {
-    setCommentsError(
-      'El comentario no puede superar 1000 caracteres.',
-    );
-
     return;
   }
 
   try {
-    setCommentSaving(true);
+    setSendingComment(true);
 
-    const result =
-      await createActivityComment(
-        activity.id,
-        {
-          comentario: cleanComment,
+    const response = await fetch(
+      `${
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:3001/api'
+      }/activities/${activity.id}/comments`,
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+
+          Authorization:
+            `Bearer ${localStorage.getItem(
+              'accessToken',
+            )}`,
         },
+
+        body: JSON.stringify({
+          comentario: cleanComment,
+        }),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(
+        data.message ||
+          'No fue posible agregar el comentario.',
       );
+    }
 
     setComments((currentComments) => [
       ...currentComments,
-      result.comentario,
+      data.comentario,
     ]);
 
     setNewComment('');
-
-    if (
-      typeof onCommentCreated ===
-      'function'
-    ) {
-      onCommentCreated(
-        activity.id,
-        result.totalComentarios,
-      );
-    }
   } catch (error) {
-    setCommentsError(
-      error.message ||
-        'No fue posible registrar el comentario.',
-    );
+    setSubmitError(error.message);
   } finally {
-    setCommentSaving(false);
+    setSendingComment(false);
   }
 }
 
@@ -739,140 +669,112 @@ const formErrors =
               )}
             </div>
 
-<section className="activity-comments">
+<div className="activity-comments">
   <div className="activity-comments__header">
-    <div>
-      <h3>
-        <MessageCircle size={19} />
-        Comentarios
-      </h3>
+    <div className="activity-comments__title">
+      <MessageSquare
+        size={20}
+        strokeWidth={1.8}
+      />
 
-      <p>
-        Seguimiento entre el creador y el
-        responsable.
-      </p>
+      <strong>Comentarios</strong>
+
+      <span className="activity-comments__count">
+        {comments.length}
+      </span>
     </div>
-
-    <span className="activity-comments__count">
-      {comments.length}
-    </span>
   </div>
 
-  {!canViewComments ? (
-  <div className="activity-comments__empty">
-    No tienes permiso para consultar los
-    comentarios de esta actividad.
-  </div>
-) : (
-    <>
-      <div className="activity-comments__list">
-        {commentsLoading && (
-          <div className="activity-comments__empty">
-            Cargando comentarios...
-          </div>
-        )}
+  <div className="activity-comments__list">
+    {comments.length === 0 ? (
+      <div className="activity-comments__empty">
+        <MessageSquare
+          size={26}
+          strokeWidth={1.5}
+        />
 
-        {!commentsLoading &&
-          comments.length === 0 && (
-            <div className="activity-comments__empty">
-              Todavía no hay comentarios.
-            </div>
-          )}
-
-        {!commentsLoading &&
-          comments.map((comment) => (
-            <article
-              className="activity-comment"
-              key={comment.id}
-            >
-              <div className="activity-comment__avatar">
-                {String(
-                  comment.autor || 'U',
-                )
-                  .trim()
-                  .charAt(0)
-                  .toUpperCase()}
-              </div>
-
-              <div className="activity-comment__content">
-                <div className="activity-comment__meta">
-                  <strong>
-                    {comment.autor ||
-                      'Usuario'}
-                  </strong>
-
-                  <time>
-                    {formatCommentDate(
-                      comment.creadoEn,
-                    )}
-                  </time>
-                </div>
-
-                <p>{comment.comentario}</p>
-              </div>
-            </article>
-          ))}
+        <span>
+          Sin comentarios registrados
+        </span>
       </div>
-
-      {commentsError && (
-        <p
-          className="activity-comments__error"
-          role="alert"
+    ) : (
+      comments.map((comment) => (
+        <article
+          className="activity-comment"
+          key={comment.id}
         >
-          {commentsError}
-        </p>
-      )}
+          <div className="activity-comment__avatar">
+            {comment.usuario
+              ?.split(' ')
+              .map((word) => word[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase() || 'U'}
+          </div>
 
-      {canComment ? (
-  <div className="activity-comments__composer">
-    <textarea
+          <div className="activity-comment__content">
+            <div className="activity-comment__top">
+              <strong>
+                {comment.usuario || 'Usuario'}
+              </strong>
+
+              <span>
+                {comment.creadoEn
+                  ? new Date(
+                      comment.creadoEn,
+                    ).toLocaleDateString(
+                      'es-MX',
+                      {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      },
+                    )
+                  : ''}
+              </span>
+            </div>
+
+            <p>{comment.comentario}</p>
+          </div>
+        </article>
+      ))
+    )}
+  </div>
+
+  <div className="activity-comments__form">
+    <input
+      type="text"
       value={newComment}
-      onChange={(event) => {
-        setNewComment(
-          event.target.value,
-        );
-
-        setCommentsError('');
-      }}
-      rows={3}
-      maxLength={1000}
-      placeholder="Escribe un comentario..."
-      disabled={
-        commentSaving || saving
+      onChange={(event) =>
+        setNewComment(event.target.value)
       }
+      placeholder="Escribe un comentario..."
+      maxLength={1000}
+      disabled={sendingComment}
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Enter' &&
+          !event.shiftKey
+        ) {
+          event.preventDefault();
+          handleAddComment();
+        }
+      }}
     />
 
-    <div className="activity-comments__composer-footer">
-      <span>
-        {newComment.length}/1000
-      </span>
-
-      <button
-        type="button"
-        onClick={handleCreateComment}
-        disabled={
-          commentSaving ||
-          saving ||
-          !newComment.trim()
-        }
-      >
-        <Send size={17} />
-
-        {commentSaving
-          ? 'Enviando...'
-          : 'Comentar'}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={handleAddComment}
+      disabled={
+        sendingComment ||
+        !newComment.trim()
+      }
+      aria-label="Enviar comentario"
+    >
+      <Send size={20} />
+    </button>
   </div>
-) : (
-  <div className="activity-comments__readonly">
-    Vista administrativa de solo lectura.
-  </div>
-)}
-
-    </>
-  )}
-</section>
+</div>
 
             <div className="activity-field">
   <div className="activity-evidence-header">
@@ -1149,6 +1051,8 @@ const formErrors =
   )}
 </fieldset>
           </div>
+
+
 
           <footer className="activity-form__footer">
             <button
