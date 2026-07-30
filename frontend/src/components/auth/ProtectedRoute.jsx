@@ -1,20 +1,56 @@
-// src/components/ProtectedRoute.jsx
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import {
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 
-export const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { isAuthenticated, user } = useAuth();
+import {
+  useAuth,
+} from '../../contexts/AuthContext.jsx';
+
+export default function ProtectedRoute({
+  children,
+  allowedRoles,
+}) {
+  const {
+    user,
+    loading,
+  } = useAuth();
+
   const location = useLocation();
 
-  // Si no está autenticado, redirige al login guardando la ruta previa
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (loading) {
+    return <div>Cargando...</div>;
   }
 
-  // Si se definieron roles permitidos y el usuario no cuenta con el rol, redirigir
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    return <Navigate to="/unauthorized" replace />;
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        state={{
+          from: location,
+        }}
+        replace
+      />
+    );
+  }
+
+  const roleIsAllowed =
+    !allowedRoles ||
+    allowedRoles.includes(user.role);
+
+  if (!roleIsAllowed) {
+    const destination =
+      user.role === 'ADMIN'
+        ? '/admin/usuarios'
+        : '/dashboard';
+
+    return (
+      <Navigate
+        to={destination}
+        replace
+      />
+    );
   }
 
   return children;
-};
+}

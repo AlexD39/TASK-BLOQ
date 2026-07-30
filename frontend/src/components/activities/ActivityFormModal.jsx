@@ -20,6 +20,7 @@ import '../../styles/activity-modal.css';
 const INITIAL_FORM = {
   titulo: '',
   descripcion: '',
+  idResponsable: '',
   fechaLimite: '',
   prioridad: '',
   estatus: 'PENDIENTE',
@@ -28,34 +29,17 @@ const INITIAL_FORM = {
 const INITIAL_TOUCHED = {
   titulo: false,
   descripcion: false,
+  idResponsable: false,
   fechaLimite: false,
   prioridad: false,
-  estatus: false,
 };
-
-const STATUS_OPTIONS = [
-  {
-    value: 'PENDIENTE',
-    label: 'Pendiente',
-  },
-  {
-    value: 'EN_PROCESO',
-    label: 'En proceso',
-  },
-  {
-    value: 'EN_REVISION',
-    label: 'En revisión',
-  },
-  {
-    value: 'COMPLETADA',
-    label: 'Completada',
-  },
-];
 
 function ActivityFormModal({
   isOpen,
   onClose,
   onSubmit,
+  users = [],
+  canAssignResponsible = false,
 }) {
   const [form, setForm] =
     useState(INITIAL_FORM);
@@ -183,24 +167,26 @@ function ActivityFormModal({
       titulo: form.titulo.trim(),
       descripcion:
         form.descripcion.trim(),
+      idResponsable: canAssignResponsible
+        ? form.idResponsable || null
+        : null,
       fechaLimite:
         form.fechaLimite,
       prioridad:
         form.prioridad,
-      estatus:
-        form.estatus,
+      estatus: 'PENDIENTE',
     };
 
     const formErrors =
       validateActivityForm(cleanData);
 
     setTouched({
-      titulo: true,
-      descripcion: true,
-      fechaLimite: true,
-      prioridad: true,
-      estatus: true,
-    });
+  titulo: true,
+  descripcion: true,
+  idResponsable: true,
+  fechaLimite: true,
+  prioridad: true,
+});
 
     setErrors(formErrors);
 
@@ -383,7 +369,7 @@ function ActivityFormModal({
             </div>
 
             <div className="activity-field">
-              <label htmlFor="responsable">
+              <label htmlFor="idResponsable">
                 Responsable
               </label>
 
@@ -394,14 +380,44 @@ function ActivityFormModal({
                   aria-hidden="true"
                 />
 
-                <input
-                  id="responsable"
-                  type="text"
-                  value="Sin asignar"
-                  disabled
-                  aria-label="Responsable sin asignar"
-                />
+                {canAssignResponsible ? (
+                  <select
+                    id="idResponsable"
+                    name="idResponsable"
+                    value={form.idResponsable}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  >
+                    <option value="">
+                      Sin asignar
+                    </option>
+
+                    {users.map((availableUser) => (
+                      <option
+                        key={availableUser.id}
+                        value={availableUser.id}
+                      >
+                        {availableUser.nombre}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="idResponsable"
+                    type="text"
+                    value="Sin asignar"
+                    disabled
+                    aria-label="Solo un administrador puede asignar un responsable"
+                  />
+                )}
               </div>
+
+              {canAssignResponsible && (
+                <small className="activity-field__help">
+                  Solo un administrador puede
+                  asignar responsables.
+                </small>
+              )}
             </div>
 
             <div className="activity-form__row">
@@ -510,57 +526,12 @@ function ActivityFormModal({
                 )}
               </div>
             </div>
-
-            <fieldset
-              className={`activity-status ${
-                hasError('estatus')
-                  ? 'activity-status--error'
-                  : ''
-              }`}
-            >
-              <legend>
-                Estatus <span>*</span>
-              </legend>
-
-              <div className="activity-status__grid">
-                {STATUS_OPTIONS.map(
-                  (status) => (
-                    <label
-                      key={status.value}
-                      className={`activity-status__option ${
-                        form.estatus ===
-                        status.value
-                          ? 'activity-status__option--selected'
-                          : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="estatus"
-                        value={status.value}
-                        checked={
-                          form.estatus ===
-                          status.value
-                        }
-                        onChange={handleChange}
-                      />
-
-                      <span className="activity-status__radio" />
-
-                      <span>
-                        {status.label}
-                      </span>
-                    </label>
-                  ),
-                )}
-              </div>
-
-              {hasError('estatus') && (
-                <p className="activity-field__error">
-                  {errors.estatus}
-                </p>
-              )}
-            </fieldset>
+            <div className="activity-field">
+  <small className="activity-field__help">
+    La actividad se registrará inicialmente
+    con el estatus Pendiente.
+  </small>
+</div>
           </div>
 
           <footer className="activity-form__footer">

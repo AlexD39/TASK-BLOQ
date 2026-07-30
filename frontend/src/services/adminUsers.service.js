@@ -1,4 +1,6 @@
-import { apiFetch } from './api.service.js';
+import {
+  apiFetch,
+} from './api.service.js';
 
 async function readResponse(response) {
   return response
@@ -22,9 +24,9 @@ function getErrorMessage(
   );
 }
 
-export async function getActivities() {
+export async function getAdminUsers() {
   const response = await apiFetch(
-    '/activities',
+    '/admin/users',
     {
       method: 'GET',
     },
@@ -37,7 +39,7 @@ export async function getActivities() {
     throw new Error(
       getErrorMessage(
         data,
-        'No fue posible consultar las actividades.',
+        'No fue posible consultar las cuentas.',
       ),
     );
   }
@@ -45,34 +47,11 @@ export async function getActivities() {
   return data;
 }
 
-export async function getUsers() {
-  const response = await apiFetch(
-    '/users',
-    {
-      method: 'GET',
-    },
-  );
-
-  const data =
-    await readResponse(response);
-
-  if (!response.ok || !data.ok) {
-    throw new Error(
-      getErrorMessage(
-        data,
-        'No fue posible consultar los usuarios.',
-      ),
-    );
-  }
-
-  return data;
-}
-
-export async function createActivity(
-  activityData,
+export async function createAdminUser(
+  userData,
 ) {
   const response = await apiFetch(
-    '/activities',
+    '/admin/users',
     {
       method: 'POST',
 
@@ -80,7 +59,7 @@ export async function createActivity(
         'Content-Type': 'application/json',
       },
 
-      body: JSON.stringify(activityData),
+      body: JSON.stringify(userData),
     },
   );
 
@@ -91,7 +70,7 @@ export async function createActivity(
     throw new Error(
       getErrorMessage(
         data,
-        'No fue posible registrar la actividad.',
+        'No fue posible crear la cuenta.',
       ),
     );
   }
@@ -99,12 +78,12 @@ export async function createActivity(
   return data;
 }
 
-export async function updateActivity(
-  activityId,
-  activityData,
+export async function updateAdminUser(
+  userId,
+  userData,
 ) {
   const response = await apiFetch(
-    `/activities/${activityId}`,
+    `/admin/users/${userId}`,
     {
       method: 'PATCH',
 
@@ -112,7 +91,7 @@ export async function updateActivity(
         'Content-Type': 'application/json',
       },
 
-      body: JSON.stringify(activityData),
+      body: JSON.stringify(userData),
     },
   );
 
@@ -123,7 +102,7 @@ export async function updateActivity(
     throw new Error(
       getErrorMessage(
         data,
-        'No fue posible actualizar la actividad.',
+        'No fue posible actualizar la cuenta.',
       ),
     );
   }
@@ -131,45 +110,22 @@ export async function updateActivity(
   return data;
 }
 
-export async function getActivityComments(
-  activityId,
+export async function updateAdminUserStatus(
+  userId,
+  estado,
 ) {
   const response = await apiFetch(
-    `/activities/${activityId}/comments`,
+    `/admin/users/${userId}/status`,
     {
-      method: 'GET',
-    },
-  );
-
-  const data =
-    await readResponse(response);
-
-  if (!response.ok || !data.ok) {
-    throw new Error(
-      getErrorMessage(
-        data,
-        'No fue posible consultar los comentarios.',
-      ),
-    );
-  }
-
-  return data;
-}
-
-export async function createActivityComment(
-  activityId,
-  commentData,
-) {
-  const response = await apiFetch(
-    `/activities/${activityId}/comments`,
-    {
-      method: 'POST',
+      method: 'PATCH',
 
       headers: {
         'Content-Type': 'application/json',
       },
 
-      body: JSON.stringify(commentData),
+      body: JSON.stringify({
+        estado,
+      }),
     },
   );
 
@@ -180,7 +136,39 @@ export async function createActivityComment(
     throw new Error(
       getErrorMessage(
         data,
-        'No fue posible registrar el comentario.',
+        'No fue posible cambiar el estado de la cuenta.',
+      ),
+    );
+  }
+
+  return data;
+}
+
+export async function resetAdminUserPassword(
+  userId,
+  passwordData,
+) {
+  const response = await apiFetch(
+    `/admin/users/${userId}/password`,
+    {
+      method: 'PATCH',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(passwordData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible restablecer la contraseña.',
       ),
     );
   }
