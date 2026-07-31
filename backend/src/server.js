@@ -1775,11 +1775,25 @@ app.get(
           a.id_responsable AS "idResponsable",
           responsable.nombre AS responsable,
 
-          (
-            SELECT COUNT(*)::INTEGER
-            FROM comentarios c
-            WHERE c.id_actividad = a.id_actividad
-          ) AS comentarios,
+          COALESCE(
+  (
+    SELECT json_agg(
+      json_build_object(
+        'id', c.id_comentario,
+        'comentario', c.comentario,
+        'creadoEn', c.creado_en,
+        'usuario', u.nombre
+      )
+      ORDER BY c.creado_en
+    )
+    FROM comentarios c
+    INNER JOIN usuarios u
+      ON u.id_usuario = c.id_usuario
+    WHERE c.id_actividad =
+      a.id_actividad
+  ),
+  '[]'::json
+) AS "comentariosDetalle",
 
 COALESCE(
   (
@@ -2377,706 +2391,6 @@ try {
 
 /* =========================================
    REGISTRAR EVIDENCIA
-========================================= */
-
-app.post(
-  '/api/activities/:id/evidences',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const idActivity = Number(
-        request.params.id,
-      );
-
-      if (
-        !Number.isInteger(idActivity) ||
-        idActivity <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la actividad no es válido.',
-        });
-      }
-
-      const link =
-        normalizeHttpUrl(
-          request.body?.enlace,
-        );
-
-      const description =
-        typeof request.body?.descripcion ===
-        'string'
-          ? request.body.descripcion.trim()
-          : '';
-
-      const errors = {};
-
-      if (!link) {
-        errors.enlace =
-          'Ingresa un enlace HTTP o HTTPS válido.';
-      }
-
-      if (description.length > 1000) {
-        errors.descripcion =
-          'La descripción no puede superar 1000 caracteres.';
-      }
-
-      if (Object.keys(errors).length > 0) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Verifica los datos de la evidencia.',
-          errors,
-        });
-      }
-
-      const activityResult =
-        await pool.query(
-          `
-            SELECT
-              id_actividad,
-              id_responsable,
-              estatus
-            FROM actividades
-            WHERE id_actividad = $1
-            LIMIT 1
-          `,
-          [idActivity],
-        );
-
-      const activity =
-        activityResult.rows[0];
-
-      if (!activity) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isResponsible =
-        Number(activity.id_responsable) ===
-        request.auth.idUsuario;
-
-      if (!isResponsible) {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'Solo el responsable puede registrar evidencias.',
-        });
-      }
-
-      if (
-        activity.estatus !==
-        'EN_PROCESO'
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Solo puedes registrar evidencias mientras la actividad está en proceso.',
-        });
-      }
-
-      const countResult =
-        await pool.query(
-          `
-            SELECT COUNT(*)::INTEGER AS total
-            FROM evidencias
-            WHERE id_actividad = $1
-          `,
-          [idActivity],
-        );
-
-      if (
-        countResult.rows[0].total >= 20
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Solo puedes registrar hasta 20 evidencias por actividad.',
-        });
-      }
-
-      const insertResult =
-        await pool.query(
-          `
-            INSERT INTO evidencias (
-              id_actividad,
-              id_usuario_envia,
-              enlace,
-              descripcion
-            )
-            VALUES (
-              $1,
-              $2,
-              $3,
-              $4
-            )
-            RETURNING id_evidencia
-          `,
-          [
-            idActivity,
-            request.auth.idUsuario,
-            link,
-            description || null,
-          ],
-        );
-
-      const evidence =
-        await getEvidenceById(
-          pool,
-          insertResult.rows[0]
-            .id_evidencia,
-        );
-
-      return response.status(201).json({
-        ok: true,
-        message:
-          'Evidencia registrada correctamente.',
-        evidencia: evidence,
-        actividad: {
-          id: String(idActivity),
-          estatus: activity.estatus,
-        },
-      });
-    } catch (error) {
-      console.error(
-        'Error registrando evidencia:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible registrar la evidencia.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   REVISAR EVIDENCIA
-========================================= */
-
-app.patch(
-  '/api/evidences/:id/review',
-  requireAccessToken,
-  async (request, response) => {
-    const client =
-      await pool.connect();
-
-    try {
-      const idEvidence = Number(
-        request.params.id,
-      );
-
-      if (
-        !Number.isInteger(idEvidence) ||
-        idEvidence <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la evidencia no es válido.',
-        });
-      }
-
-      const status =
-        typeof request.body?.estado ===
-        'string'
-          ? request.body.estado
-              .trim()
-              .toUpperCase()
-          : '';
-
-      const observation =
-        typeof request.body?.observacion ===
-        'string'
-          ? request.body.observacion.trim()
-          : '';
-
-      if (
-        ![
-          'APROBADA',
-          'RECHAZADA',
-        ].includes(status)
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La evidencia solo puede aprobarse o rechazarse.',
-        });
-      }
-
-      if (
-        status === 'RECHAZADA' &&
-        !observation
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La observación es obligatoria cuando la evidencia es rechazada.',
-          errors: {
-            observacion:
-              'Escribe el motivo del rechazo.',
-          },
-        });
-      }
-
-      if (observation.length > 1000) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La observación no puede superar 1000 caracteres.',
-        });
-      }
-
-      await client.query('BEGIN');
-
-      const evidenceResult =
-        await client.query(
-          `
-            SELECT
-              e.id_evidencia,
-              e.estado,
-              a.id_actividad,
-              a.id_creador,
-              a.estatus
-            FROM evidencias e
-
-            INNER JOIN actividades a
-              ON a.id_actividad =
-                e.id_actividad
-
-            WHERE e.id_evidencia = $1
-            FOR UPDATE
-          `,
-          [idEvidence],
-        );
-
-      const evidence =
-        evidenceResult.rows[0];
-
-      if (!evidence) {
-        await client.query('ROLLBACK');
-
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La evidencia no existe.',
-        });
-      }
-
-      const isCreator =
-        Number(evidence.id_creador) ===
-        request.auth.idUsuario;
-
-      if (!isCreator) {
-        await client.query('ROLLBACK');
-
-        return response.status(403).json({
-          ok: false,
-          message:
-            'Solo el creador de la actividad puede revisar esta evidencia.',
-        });
-      }
-
-      if (
-        evidence.estatus !==
-        'EN_REVISION'
-      ) {
-        await client.query('ROLLBACK');
-
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La actividad debe estar en revisión.',
-        });
-      }
-
-      if (
-        evidence.estado !==
-        'PENDIENTE'
-      ) {
-        await client.query('ROLLBACK');
-
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Esta evidencia ya fue revisada.',
-        });
-      }
-
-      await client.query(
-        `
-          UPDATE evidencias
-          SET
-            estado = $1,
-            id_usuario_revisa = $2,
-            observacion_revision = $3,
-            revisado_en = NOW()
-          WHERE id_evidencia = $4
-        `,
-        [
-          status,
-          request.auth.idUsuario,
-          observation || null,
-          idEvidence,
-        ],
-      );
-
-      let activityStatus =
-        evidence.estatus;
-
-      if (status === 'RECHAZADA') {
-        activityStatus =
-          'EN_PROCESO';
-
-        await client.query(
-          `
-            UPDATE actividades
-            SET estatus = 'EN_PROCESO'
-            WHERE id_actividad = $1
-          `,
-          [evidence.id_actividad],
-        );
-      }
-
-      const updatedEvidence =
-        await getEvidenceById(
-          client,
-          idEvidence,
-        );
-
-      await client.query('COMMIT');
-
-      return response.status(200).json({
-        ok: true,
-        message:
-          status === 'APROBADA'
-            ? 'Evidencia aprobada correctamente.'
-            : 'Evidencia rechazada correctamente.',
-        evidencia: updatedEvidence,
-        actividad: {
-          id: String(
-            evidence.id_actividad,
-          ),
-          estatus: activityStatus,
-        },
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-
-      console.error(
-        'Error revisando evidencia:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible revisar la evidencia.',
-      });
-    } finally {
-      client.release();
-    }
-  },
-);
-
-/* =========================================
-   CORREGIR Y REENVIAR EVIDENCIA
-========================================= */
-
-app.patch(
-  '/api/evidences/:id/resubmit',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const idEvidence = Number(
-        request.params.id,
-      );
-
-      if (
-        !Number.isInteger(idEvidence) ||
-        idEvidence <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la evidencia no es válido.',
-        });
-      }
-
-      const link =
-        normalizeHttpUrl(
-          request.body?.enlace,
-        );
-
-      const description =
-        typeof request.body?.descripcion ===
-        'string'
-          ? request.body.descripcion.trim()
-          : '';
-
-      const errors = {};
-
-      if (!link) {
-        errors.enlace =
-          'Ingresa un enlace HTTP o HTTPS válido.';
-      }
-
-      if (description.length > 1000) {
-        errors.descripcion =
-          'La descripción no puede superar 1000 caracteres.';
-      }
-
-      if (Object.keys(errors).length > 0) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Verifica los datos de la evidencia.',
-          errors,
-        });
-      }
-
-      const existingResult =
-        await pool.query(
-          `
-            SELECT
-              e.id_evidencia,
-              e.estado,
-              a.id_actividad,
-              a.id_responsable,
-              a.estatus
-            FROM evidencias e
-
-            INNER JOIN actividades a
-              ON a.id_actividad =
-                e.id_actividad
-
-            WHERE e.id_evidencia = $1
-            LIMIT 1
-          `,
-          [idEvidence],
-        );
-
-      const evidence =
-        existingResult.rows[0];
-
-      if (!evidence) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La evidencia no existe.',
-        });
-      }
-
-      const isResponsible =
-        Number(
-          evidence.id_responsable,
-        ) === request.auth.idUsuario;
-
-      if (!isResponsible) {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'Solo el responsable puede corregir esta evidencia.',
-        });
-      }
-
-      if (
-        evidence.estado !==
-        'RECHAZADA'
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Solo pueden reenviarse evidencias rechazadas.',
-        });
-      }
-
-      if (
-        evidence.estatus !==
-        'EN_PROCESO'
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La actividad debe estar en proceso para corregir la evidencia.',
-        });
-      }
-
-      await pool.query(
-        `
-          UPDATE evidencias
-          SET
-            enlace = $1,
-            descripcion = $2,
-            estado = 'PENDIENTE'
-          WHERE id_evidencia = $3
-        `,
-        [
-          link,
-          description || null,
-          idEvidence,
-        ],
-      );
-
-      const updatedEvidence =
-        await getEvidenceById(
-          pool,
-          idEvidence,
-        );
-
-      return response.status(200).json({
-        ok: true,
-        message:
-          'Evidencia corregida y reenviada correctamente.',
-        evidencia: updatedEvidence,
-        actividad: {
-          id: String(
-            evidence.id_actividad,
-          ),
-          estatus:
-            evidence.estatus,
-        },
-      });
-    } catch (error) {
-      console.error(
-        'Error reenviando evidencia:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible reenviar la evidencia.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   LISTAR COMENTARIOS DE UNA ACTIVIDAD
-========================================= */
-
-app.get(
-  '/api/activities/:id/comments',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const idActividad = Number(
-        request.params.id,
-      );
-
-      if (
-        !Number.isInteger(idActividad) ||
-        idActividad <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la actividad no es válido.',
-        });
-      }
-
-      const activityResult =
-        await pool.query(
-          `
-            SELECT
-              id_actividad,
-              id_creador,
-              id_responsable
-            FROM actividades
-            WHERE id_actividad = $1
-            LIMIT 1
-          `,
-          [idActividad],
-        );
-
-      const activity =
-        activityResult.rows[0];
-
-      if (!activity) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isCreator =
-        Number(activity.id_creador) ===
-        request.auth.idUsuario;
-
-      const isResponsible =
-  Number(activity.id_responsable) ===
-  request.auth.idUsuario;
-
-if (
-  !isCreator &&
-  !isResponsible &&
-  !isAdmin
-) {
-  return response.status(403).json({
-    ok: false,
-    message:
-      'No tienes permiso para consultar los comentarios de esta actividad.',
-  });
-}
-
-
-      const result = await pool.query(
-        `
-          SELECT
-            c.id_comentario AS id,
-            c.comentario,
-            c.creado_en AS "creadoEn",
-
-            u.id_usuario AS "idUsuario",
-            u.nombre AS autor,
-            u.correo AS "correoAutor"
-
-          FROM comentarios c
-
-          INNER JOIN usuarios u
-            ON u.id_usuario = c.id_usuario
-
-          WHERE c.id_actividad = $1
-
-          ORDER BY
-            c.creado_en ASC,
-            c.id_comentario ASC
-        `,
-        [idActividad],
-      );
-
-      return response.status(200).json({
-        ok: true,
-        comentarios: result.rows,
-        total: result.rows.length,
-      });
-    } catch (error) {
-      console.error(
-        'Error consultando comentarios:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible consultar los comentarios.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   REGISTRAR COMENTARIO
-========================================= */
-
 app.post(
   '/api/activities/:id/comments',
   requireAccessToken,
@@ -3085,17 +2399,6 @@ app.post(
       const idActividad = Number(
         request.params.id,
       );
-
-      if (
-        !Number.isInteger(idActividad) ||
-        idActividad <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la actividad no es válido.',
-        });
-      }
 
       const comentario =
         typeof request.body?.comentario ===
@@ -3103,94 +2406,45 @@ app.post(
           ? request.body.comentario.trim()
           : '';
 
-      const errors = {};
-
-      if (!comentario) {
-        errors.comentario =
-          'El comentario no puede estar vacío.';
-      } else if (comentario.length > 1000) {
-        errors.comentario =
-          'El comentario no puede superar 1000 caracteres.';
-      }
-
-      if (Object.keys(errors).length > 0) {
+      if (
+        !Number.isInteger(idActividad) ||
+        idActividad <= 0
+      ) {
         return response.status(400).json({
           ok: false,
           message:
-            'Verifica el comentario.',
-          errors,
+            'La actividad no es válida.',
         });
       }
 
-      const activityResult =
-        await pool.query(
-          `
-            SELECT
-              id_actividad,
-              id_creador,
-              id_responsable
-            FROM actividades
-            WHERE id_actividad = $1
-            LIMIT 1
-          `,
-          [idActividad],
-        );
-
-      const activity =
-        activityResult.rows[0];
-
-      if (!activity) {
-        return response.status(404).json({
+      if (!comentario) {
+        return response.status(400).json({
           ok: false,
           message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isCreator =
-        Number(activity.id_creador) ===
-        request.auth.idUsuario;
-
-      const isResponsible =
-        Number(activity.id_responsable) ===
-        request.auth.idUsuario;
-
-      if (!isCreator && !isResponsible) {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'Solo los participantes de la actividad pueden agregar comentarios.',
+            'El comentario es obligatorio.',
         });
       }
 
       const result = await pool.query(
         `
-          WITH comentario_insertado AS (
-            INSERT INTO comentarios (
-              id_actividad,
-              id_usuario,
-              comentario
-            )
-            VALUES ($1, $2, $3)
-            RETURNING
-              id_comentario,
-              id_usuario,
-              comentario,
-              creado_en
+          INSERT INTO comentarios (
+            id_actividad,
+            id_usuario,
+            comentario
           )
           SELECT
-            c.id_comentario AS id,
-            c.comentario,
-            c.creado_en AS "creadoEn",
-
-            u.id_usuario AS "idUsuario",
-            u.nombre AS autor,
-            u.correo AS "correoAutor"
-
-          FROM comentario_insertado c
-
-          INNER JOIN usuarios u
-            ON u.id_usuario = c.id_usuario
+            $1,
+            $2,
+            $3
+          WHERE EXISTS (
+            SELECT 1
+            FROM actividades
+            WHERE id_actividad = $1
+          )
+          RETURNING
+            id_comentario AS id,
+            comentario,
+            creado_en AS "creadoEn"
         `,
         [
           idActividad,
@@ -3199,34 +2453,45 @@ app.post(
         ],
       );
 
-      const totalResult =
+      if (result.rows.length === 0) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const userResult =
         await pool.query(
           `
-            SELECT COUNT(*)::INTEGER AS total
-            FROM comentarios
-            WHERE id_actividad = $1
+            SELECT nombre
+            FROM usuarios
+            WHERE id_usuario = $1
           `,
-          [idActividad],
+          [request.auth.idUsuario],
         );
 
       return response.status(201).json({
         ok: true,
         message:
-          'Comentario registrado correctamente.',
-        comentario: result.rows[0],
-        totalComentarios:
-          totalResult.rows[0].total,
+          'Comentario agregado correctamente.',
+        comentario: {
+          ...result.rows[0],
+          usuario:
+            userResult.rows[0]?.nombre ||
+            'Usuario',
+        },
       });
     } catch (error) {
       console.error(
-        'Error registrando comentario:',
+        'Error agregando comentario:',
         error,
       );
 
       return response.status(500).json({
         ok: false,
         message:
-          'No fue posible registrar el comentario.',
+          'No fue posible agregar el comentario.',
       });
     }
   },
