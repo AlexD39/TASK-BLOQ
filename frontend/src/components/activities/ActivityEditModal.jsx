@@ -2,16 +2,22 @@ import {
   useEffect,
   useState,
 } from 'react';
+
 import {
+  AlertTriangle,
   CalendarDays,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
   Link,
   MessageCircle,
   Plus,
+  RotateCcw,
   Save,
   Send,
-  Trash2,
   UserRound,
   X,
+  XCircle,
 } from 'lucide-react';
 
 import {
@@ -25,7 +31,8 @@ import {
 } from '../../services/activities.service.js';
 
 import '../../styles/activity-modal.css';
-
+import EvidenceRejectModal from './EvidenceRejectModal.jsx';
+import EvidenceResubmitModal from './EvidenceResubmitModal.jsx';
 
 function getAllowedStatuses({
   currentStatus,
@@ -125,6 +132,9 @@ export default function ActivityEditModal({
   onClose,
   onSubmit,
   onCommentCreated,
+  onCreateEvidence,
+  onReviewEvidence,
+  onResubmitEvidence,
   users = [],
   canAssignResponsible = false,
 }) {
@@ -136,7 +146,6 @@ const [form, setForm] = useState({
   fechaLimite: '',
   prioridad: '',
   estatus: '',
-  evidencias: [''],
 });
 
 const currentUserId =
@@ -153,9 +162,22 @@ const isResponsible =
 const canEditGeneralFields =
   isCreator;
 
-const canEditEvidence =
-  isCreator ||
-  isResponsible;
+const canManageResponsible =
+  isCreator &&
+  canAssignResponsible;
+
+const canAddEvidence =
+  isResponsible &&
+  activity?.estatus === 'EN_PROCESO';
+
+const canReviewEvidence =
+  isCreator &&
+  activity?.estatus === 'EN_REVISION';
+
+const evidences =
+  Array.isArray(activity?.evidencias)
+    ? activity.evidencias
+    : [];
 
 const allowedStatuses =
   getAllowedStatuses({
@@ -191,6 +213,39 @@ const [newComment, setNewComment] =
 
 const [commentSaving, setCommentSaving] =
   useState(false);
+
+const [
+  newEvidence,
+  setNewEvidence,
+] = useState({
+  enlace: '',
+  descripcion: '',
+});
+
+const [
+  evidenceSaving,
+  setEvidenceSaving,
+] = useState(false);
+
+const [
+  evidenceError,
+  setEvidenceError,
+] = useState('');
+
+const [
+  reviewingEvidenceId,
+  setReviewingEvidenceId,
+] = useState(null);
+
+const [
+  evidenceToReject,
+  setEvidenceToReject,
+] = useState(null);
+
+const [
+  evidenceToResubmit,
+  setEvidenceToResubmit,
+] = useState(null);
 
 const isAdmin =
   currentUser?.role === 'ADMIN';
@@ -263,87 +318,101 @@ useEffect(() => {
 ]);
 
   useEffect(() => {
-    if (!isOpen || !activity) {
-      return;
+  if (!isOpen || !activity?.id) {
+    return;
+  }
+
+  setForm({
+    titulo:
+      activity.titulo || '',
+
+    descripcion:
+      activity.descripcion || '',
+
+    idResponsable:
+      activity.idResponsable != null
+        ? String(
+            activity.idResponsable,
+          )
+        : '',
+
+    fechaLimite:
+      normalizeDate(
+        activity.fechaLimite,
+      ),
+
+    prioridad:
+      activity.prioridad || '',
+
+    estatus:
+      activity.estatus || '',
+  });
+
+  setNewEvidence({
+    enlace: '',
+    descripcion: '',
+  });
+
+  setEvidenceError('');
+  setEvidenceToReject(null);
+  setEvidenceToResubmit(null);
+
+  setErrors({});
+  setTouched(INITIAL_TOUCHED);
+  setSubmitError('');
+  setSaving(false);
+}, [
+  isOpen,
+  activity?.id,
+  activity?.estatus,
+]);
+
+useEffect(() => {
+  if (!isOpen) {
+    return undefined;
+  }
+
+  const previousOverflow =
+    document.body.style.overflow;
+
+  function handleKeyDown(event) {
+    if (
+      event.key === 'Escape' &&
+      !saving
+    ) {
+      onClose();
     }
+  }
 
-    setForm({
-  titulo: activity.titulo || '',
-  descripcion: activity.descripcion || '',
-  idResponsable:
-    activity.idResponsable != null
-      ? String(activity.idResponsable)
-      : '',
-  fechaLimite: normalizeDate(
-    activity.fechaLimite,
-  ),
-  prioridad: activity.prioridad || '',
-  estatus: activity.estatus || '',
+  document.body.style.overflow =
+    'hidden';
 
-  evidencias:
-  Array.isArray(activity.evidencias) &&
-  activity.evidencias.length > 0
-    ? activity.evidencias.map(
-        (evidencia) =>
-          typeof evidencia === 'string'
-            ? evidencia
-            : evidencia.enlace || '',
-      )
-    : [''],
-    
-});
+  window.addEventListener(
+    'keydown',
+    handleKeyDown,
+  );
 
-
-    setErrors({});
-    setTouched(INITIAL_TOUCHED);
-    setSubmitError('');
-    setSaving(false);
-  }, [isOpen, activity]);
-
-  useEffect(() => {
-    if (!isOpen || !activity) {
-      return undefined;
-    }
-
-    const previousOverflow =
-      document.body.style.overflow;
-
+  return () => {
     document.body.style.overflow =
-      'hidden';
+      previousOverflow;
 
-    function handleKeyDown(event) {
-      if (
-        event.key === 'Escape' &&
-        !saving
-      ) {
-        onClose();
-      }
-    }
-
-    window.addEventListener(
+    window.removeEventListener(
       'keydown',
       handleKeyDown,
     );
+  };
+}, [
+  isOpen,
+  saving,
+  onClose,
+]);
 
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-
-      window.removeEventListener(
-        'keydown',
-        handleKeyDown,
-      );
-    };
-  }, [
-    isOpen,
-    activity,
-    saving,
-    onClose,
-  ]);
-
-  if (!isOpen || !activity) {
-    return null;
-  }
+if (
+  !isOpen ||
+  !activity?.id
+) {
+  return null;
+}
 
   function handleChange(event) {
     const { name, value } =
@@ -370,55 +439,26 @@ useEffect(() => {
     setSubmitError('');
   }
 
-  function handleEvidenceChange(
-  evidenceIndex,
-  value,
-) {
+function handleStatusChange(event) {
+  const nextStatus =
+    event.target.value;
+
   setForm((currentForm) => ({
     ...currentForm,
+    estatus: nextStatus,
+  }));
 
-    evidencias:
-      currentForm.evidencias.map(
-        (evidencia, index) =>
-          index === evidenceIndex
-            ? value
-            : evidencia,
-      ),
+  setTouched((currentTouched) => ({
+    ...currentTouched,
+    estatus: true,
+  }));
+
+  setErrors((currentErrors) => ({
+    ...currentErrors,
+    estatus: '',
   }));
 
   setSubmitError('');
-}
-
-function handleAddEvidence() {
-  setForm((currentForm) => ({
-    ...currentForm,
-
-    evidencias: [
-      ...currentForm.evidencias,
-      '',
-    ],
-  }));
-}
-
-function handleRemoveEvidence(
-  evidenceIndex,
-) {
-  setForm((currentForm) => {
-    const updatedEvidences =
-      currentForm.evidencias.filter(
-        (_, index) =>
-          index !== evidenceIndex,
-      );
-
-    return {
-      ...currentForm,
-
-      evidencias:
-        updatedEvidences.length > 0
-          ? updatedEvidences
-          : [''],
-    };
-  });
 }
 
 
@@ -516,6 +556,106 @@ async function handleCreateComment() {
   }
 }
 
+function isValidHttpUrl(value) {
+  try {
+    const url = new URL(value);
+
+    return [
+      'http:',
+      'https:',
+    ].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+async function handleCreateEvidence() {
+  const cleanEvidence = {
+    enlace:
+      newEvidence.enlace.trim(),
+
+    descripcion:
+      newEvidence.descripcion.trim(),
+  };
+
+  setEvidenceError('');
+
+  if (
+    !cleanEvidence.enlace ||
+    !isValidHttpUrl(
+      cleanEvidence.enlace,
+    )
+  ) {
+    setEvidenceError(
+      'Ingresa un enlace HTTP o HTTPS válido.',
+    );
+
+    return;
+  }
+
+  if (
+    cleanEvidence.descripcion.length >
+    1000
+  ) {
+    setEvidenceError(
+      'La descripción no puede superar 1000 caracteres.',
+    );
+
+    return;
+  }
+
+  try {
+    setEvidenceSaving(true);
+
+    await onCreateEvidence(
+      activity.id,
+      cleanEvidence,
+    );
+
+    setNewEvidence({
+      enlace: '',
+      descripcion: '',
+    });
+  } catch (error) {
+    setEvidenceError(
+      error.message ||
+        'No fue posible registrar la evidencia.',
+    );
+  } finally {
+    setEvidenceSaving(false);
+  }
+}
+
+async function handleApproveEvidence(
+  evidence,
+) {
+  try {
+    setEvidenceError('');
+    setReviewingEvidenceId(
+      evidence.id,
+    );
+
+    await onReviewEvidence(
+      evidence.id,
+      {
+        estado: 'APROBADA',
+        observacion: '',
+      },
+    );
+  } catch (error) {
+    setEvidenceError(
+      error.message ||
+        'No fue posible aprobar la evidencia.',
+    );
+  } finally {
+    setReviewingEvidenceId(null);
+  }
+}
+
+function formatEvidenceDate(value) {
+  return formatCommentDate(value);
+}
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -526,12 +666,12 @@ const cleanData = {
   descripcion:
     form.descripcion.trim(),
 
-  ...(canAssignResponsible
-    ? {
-        idResponsable:
-          form.idResponsable || null,
-      }
-    : {}),
+  ...(canManageResponsible
+  ? {
+      idResponsable:
+        form.idResponsable || null,
+    }
+  : {}),
 
   fechaLimite:
     form.fechaLimite,
@@ -541,12 +681,6 @@ const cleanData = {
 
   estatus:
     form.estatus,
-
-  evidencias: form.evidencias
-    .map((evidencia) =>
-      evidencia.trim(),
-    )
-    .filter(Boolean),
 };
 
 const isSendingToReview =
@@ -555,10 +689,24 @@ const isSendingToReview =
 
 if (
   isSendingToReview &&
-  cleanData.evidencias.length === 0
+  evidences.length === 0
 ) {
   setSubmitError(
     'Agrega al menos una evidencia antes de enviar la actividad a revisión.',
+  );
+
+  return;
+}
+
+if (
+  isSendingToReview &&
+  evidences.some(
+    (evidence) =>
+      evidence.estado === 'RECHAZADA',
+  )
+) {
+  setSubmitError(
+    'Corrige y reenvía todas las evidencias rechazadas.',
   );
 
   return;
@@ -617,10 +765,11 @@ const formErrors =
   }
 
   return (
+  <>
     <div
       className="activity-modal-backdrop"
       onMouseDown={handleBackdropClick}
-    >
+    >      
       <section
         className="activity-modal"
         role="dialog"
@@ -874,80 +1023,295 @@ const formErrors =
   )}
 </section>
 
-            <div className="activity-field">
-  <div className="activity-evidence-header">
-    <label>
-      Evidencias
-    </label>
+<section className="activity-evidence-section">
+  <header className="activity-evidence-section__header">
+    <div>
+      <h3>
+        Evidencias
+      </h3>
 
-    <button
-      type="button"
-      className="activity-evidence-add"
-      onClick={handleAddEvidence}
-      disabled={
-  saving ||
-  !canEditEvidence
-}
+      <p>
+        Archivos y enlaces entregados por
+        el responsable.
+      </p>
+    </div>
+
+    <span className="activity-evidence-count">
+      {evidences.length}
+    </span>
+  </header>
+
+  {evidenceError && (
+    <div
+      className="activity-form-error"
+      role="alert"
     >
-      <Plus size={17} />
-      Agregar evidencia
-    </button>
-  </div>
+      {evidenceError}
+    </div>
+  )}
 
-  <div className="activity-evidence-list">
-    {form.evidencias.map(
-      (evidencia, index) => (
-        <div
-          className="activity-evidence-item"
-          key={index}
+  <div className="activity-evidence-cards">
+    {evidences.length === 0 ? (
+      <div className="activity-evidence-empty">
+        Todavía no se han registrado
+        evidencias.
+      </div>
+    ) : (
+      evidences.map((evidence) => (
+        <article
+          className="activity-evidence-card"
+          key={evidence.id}
         >
-          <div className="activity-input-icon">
-            <Link
-              size={20}
-              strokeWidth={1.7}
-            />
+          <header>
+            <div>
+              <strong>
+                Evidencia #{evidence.id}
+              </strong>
 
-            <input
-              type="url"
-              value={evidencia}
-              onChange={(event) =>
-                handleEvidenceChange(
-                  index,
-                  event.target.value,
-                )
-              }
-              placeholder="https://ejemplo.com/evidencia"
-              disabled={
-  saving ||
-  !canEditEvidence
-}
-            />
+              <span
+                className={`activity-evidence-status activity-evidence-status--${String(
+                  evidence.estado ||
+                    'PENDIENTE',
+                ).toLowerCase()}`}
+              >
+                {evidence.estado ===
+                'APROBADA'
+                  ? 'Aprobada'
+                  : evidence.estado ===
+                      'RECHAZADA'
+                    ? 'Rechazada'
+                    : 'Pendiente'}
+              </span>
+            </div>
+
+            <a
+              href={evidence.enlace}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={17} />
+              Abrir
+            </a>
+          </header>
+
+          {evidence.descripcion && (
+            <p className="activity-evidence-description">
+              {evidence.descripcion}
+            </p>
+          )}
+
+          <div className="activity-evidence-meta">
+            <span>
+              Enviada por{' '}
+              <strong>
+                {evidence.enviadoPor ||
+                  'Usuario'}
+              </strong>
+            </span>
+
+            <time>
+              {formatEvidenceDate(
+                evidence.creadoEn,
+              )}
+            </time>
           </div>
 
-          <button
-            type="button"
-            className="activity-evidence-remove"
-            onClick={() =>
-              handleRemoveEvidence(index)
-            }
-            disabled={
-  saving ||
-  !canEditEvidence
-}
-            aria-label="Eliminar evidencia"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-      ),
+          {evidence.revisor && (
+            <div className="activity-evidence-review">
+              <div>
+                {evidence.estado ===
+                'APROBADA' ? (
+                  <CheckCircle2 size={18} />
+                ) : (
+                  <XCircle size={18} />
+                )}
+
+                <span>
+                  Revisada por{' '}
+                  <strong>
+                    {evidence.revisor}
+                  </strong>
+                </span>
+              </div>
+
+              <time>
+                {formatEvidenceDate(
+                  evidence.revisadoEn,
+                )}
+              </time>
+            </div>
+          )}
+
+          {evidence.observacionRevision && (
+            <div className="evidence-rejection-observation">
+              <strong>
+                Observación del creador
+              </strong>
+
+              <p>
+                {
+                  evidence
+                    .observacionRevision
+                }
+              </p>
+            </div>
+          )}
+
+          {canReviewEvidence &&
+            evidence.estado ===
+              'PENDIENTE' && (
+              <footer className="activity-evidence-actions">
+                <button
+                  type="button"
+                  className="activity-evidence-approve"
+                  onClick={() =>
+                    handleApproveEvidence(
+                      evidence,
+                    )
+                  }
+                  disabled={
+                    reviewingEvidenceId ===
+                    evidence.id
+                  }
+                >
+                  <CheckCircle2 size={17} />
+
+                  {reviewingEvidenceId ===
+                  evidence.id
+                    ? 'Aprobando...'
+                    : 'Aprobar'}
+                </button>
+
+                <button
+                  type="button"
+                  className="activity-evidence-reject"
+                  onClick={() =>
+                    setEvidenceToReject(
+                      evidence,
+                    )
+                  }
+                >
+                  <XCircle size={17} />
+                  Rechazar
+                </button>
+              </footer>
+            )}
+
+          {isResponsible &&
+            activity.estatus ===
+              'EN_PROCESO' &&
+            evidence.estado ===
+              'RECHAZADA' && (
+              <footer className="activity-evidence-actions">
+                <button
+                  type="button"
+                  className="activity-evidence-resubmit"
+                  onClick={() =>
+                    setEvidenceToResubmit(
+                      evidence,
+                    )
+                  }
+                >
+                  <RotateCcw size={17} />
+                  Corregir y reenviar
+                </button>
+              </footer>
+            )}
+        </article>
+      ))
     )}
   </div>
 
-  <small className="activity-field__help">
-    Puedes agregar enlaces a documentos,
-    imágenes o archivos de evidencia.
-  </small>
-</div>
+  {canAddEvidence && (
+    <div className="activity-evidence-create">
+      <div>
+        <Plus size={19} />
+
+        <strong>
+          Agregar evidencia
+        </strong>
+      </div>
+
+      <label>
+        <span>
+          Enlace *
+        </span>
+
+        <div className="activity-input-icon">
+          <Link size={19} />
+
+          <input
+            type="url"
+            value={newEvidence.enlace}
+            onChange={(event) =>
+              setNewEvidence(
+                (currentEvidence) => ({
+                  ...currentEvidence,
+                  enlace:
+                    event.target.value,
+                }),
+              )
+            }
+            disabled={evidenceSaving}
+            placeholder="https://..."
+          />
+        </div>
+      </label>
+
+      <label>
+        <span>
+          Descripción
+        </span>
+
+        <textarea
+          value={
+            newEvidence.descripcion
+          }
+          onChange={(event) =>
+            setNewEvidence(
+              (currentEvidence) => ({
+                ...currentEvidence,
+                descripcion:
+                  event.target.value,
+              }),
+            )
+          }
+          rows={3}
+          maxLength={1000}
+          disabled={evidenceSaving}
+          placeholder="Describe brevemente la evidencia"
+        />
+      </label>
+
+      <button
+        type="button"
+        className="activity-evidence-create__button"
+        onClick={handleCreateEvidence}
+        disabled={evidenceSaving}
+      >
+        <Plus size={18} />
+
+        {evidenceSaving
+          ? 'Registrando...'
+          : 'Registrar evidencia'}
+      </button>
+    </div>
+  )}
+
+  {!canAddEvidence &&
+    isResponsible &&
+    activity.estatus !==
+      'EN_PROCESO' && (
+      <div className="activity-evidence-info">
+        <Clock3 size={18} />
+
+        Las evidencias se registran cuando
+        la actividad está En proceso.
+      </div>
+    )}
+</section>
+
+
 
             <div className="activity-field">
               <label htmlFor="edit-idResponsable">
@@ -960,7 +1324,7 @@ const formErrors =
                   strokeWidth={1.7}
                 />
 
-                {canAssignResponsible ? (
+                {canManageResponsible ? (
                   <select
                     id="edit-idResponsable"
                     name="idResponsable"
@@ -994,7 +1358,7 @@ const formErrors =
                 )}
               </div>
 
-              {canAssignResponsible && (
+              {canManageResponsible && (
                 <small className="activity-field__help">
                   Solo el creador puede cambiar 
                   al responsable.
@@ -1118,15 +1482,15 @@ const formErrors =
         }`}
       >
         <input
-          type="radio"
-          name="estatus"
-          value={status.value}
-          checked={
-            form.estatus === status.value
-          }
-          onChange={handleChange}
-          disabled={saving}
-        />
+  type="radio"
+  name="estatus"
+  value={status.value}
+  checked={
+    form.estatus === status.value
+  }
+  onChange={handleStatusChange}
+  disabled={saving}
+/>
 
         <span className="activity-status__radio" />
 
@@ -1172,8 +1536,60 @@ const formErrors =
               Cancelar
             </button>
           </footer>
-        </form>
+         </form>
       </section>
     </div>
-  );
+
+    <EvidenceRejectModal
+      isOpen={Boolean(
+        evidenceToReject,
+      )}
+      evidence={evidenceToReject}
+      onClose={() =>
+        setEvidenceToReject(null)
+      }
+      onSubmit={async (
+        observation,
+      ) => {
+        if (!evidenceToReject) {
+          return;
+        }
+
+        await onReviewEvidence(
+          evidenceToReject.id,
+          {
+            estado: 'RECHAZADA',
+            observacion: observation,
+          },
+        );
+
+        setEvidenceToReject(null);
+      }}
+    />
+
+    <EvidenceResubmitModal
+      isOpen={Boolean(
+        evidenceToResubmit,
+      )}
+      evidence={evidenceToResubmit}
+      onClose={() =>
+        setEvidenceToResubmit(null)
+      }
+      onSubmit={async (
+        evidenceData,
+      ) => {
+        if (!evidenceToResubmit) {
+          return;
+        }
+
+        await onResubmitEvidence(
+          evidenceToResubmit.id,
+          evidenceData,
+        );
+
+        setEvidenceToResubmit(null);
+      }}
+    />
+  </>
+);
 }

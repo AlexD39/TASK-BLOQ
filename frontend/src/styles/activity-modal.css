@@ -30,6 +30,8 @@
     0 8px 24px rgba(15, 23, 42, 0.16);
 
   animation: activity-modal-enter 180ms ease-out;
+   transform: translateZ(0);
+  will-change: transform;
 }
 
 .activity-modal::before {
@@ -115,6 +117,9 @@
 
   scrollbar-color: #9ca3af #29303a;
   scrollbar-width: thin;
+
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .activity-form__body::-webkit-scrollbar {
@@ -542,6 +547,8 @@
     color:#dc2626;
 }
 
+
+
 .activity-evidence-add{
     display:flex;
     align-items:center;
@@ -560,6 +567,7 @@
 .activity-evidence-add:hover{
     background:#1d4ed8;
 }
+
 
 .activity-comments {
   display: grid;
@@ -769,4 +777,516 @@
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
+}
+
+/* =====================================================
+   EVIDENCIAS
+===================================================== */
+
+.activity-evidence-section {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #dbe4f0;
+  border-radius: 18px;
+}
+
+.activity-evidence-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.activity-evidence-section__header h3 {
+  margin: 0;
+  color: #273449;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.activity-evidence-section__header p {
+  margin: 6px 0 0;
+  color: #7b8ba5;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.activity-evidence-count {
+  display: grid;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #4338ca;
+  font-size: 13px;
+  font-weight: 800;
+  background: #eef2ff;
+  border-radius: 999px;
+}
+
+.activity-evidence-cards {
+  display: grid;
+  gap: 14px;
+}
+
+.activity-evidence-empty {
+  padding: 22px;
+  color: #8492a8;
+  text-align: center;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+}
+
+.activity-evidence-card {
+  display: grid;
+  gap: 13px;
+  padding: 17px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 5%);
+}
+
+.activity-evidence-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.activity-evidence-card > header > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.activity-evidence-card > header strong {
+  color: #273449;
+  font-size: 15px;
+}
+
+.activity-evidence-card > header a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4338ca;
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.activity-evidence-card > header a:hover {
+  text-decoration: underline;
+}
+
+.activity-evidence-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.activity-evidence-status--pendiente {
+  color: #805400;
+  background: #fff3cd;
+}
+
+.activity-evidence-status--aprobada {
+  color: #197146;
+  background: #e8f8ef;
+}
+
+.activity-evidence-status--rechazada {
+  color: #a83232;
+  background: #fdecec;
+}
+
+.activity-evidence-description {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.activity-evidence-meta,
+.activity-evidence-review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+  color: #7b8ba5;
+  font-size: 12px;
+}
+
+.activity-evidence-review {
+  padding-top: 11px;
+  border-top: 1px solid #edf1f6;
+}
+
+.activity-evidence-review > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.evidence-rejection-observation {
+  padding: 14px;
+  color: #922b2b;
+  background: #fff1f1;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+}
+
+.evidence-rejection-observation strong {
+  font-size: 13px;
+}
+
+.evidence-rejection-observation p {
+  margin: 7px 0 0;
+  line-height: 1.5;
+}
+
+.activity-evidence-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.activity-evidence-actions button,
+.activity-evidence-create__button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  border: 0;
+  border-radius: 11px;
+  transition:
+    transform 150ms ease,
+    filter 150ms ease;
+}
+
+.activity-evidence-actions button:hover,
+.activity-evidence-create__button:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.activity-evidence-actions button:disabled,
+.activity-evidence-create__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.activity-evidence-approve {
+  background: #198754;
+}
+
+.activity-evidence-reject {
+  background: #c43c3c;
+}
+
+.activity-evidence-resubmit {
+  background: #4f46e5;
+}
+
+/* =====================================================
+   FORMULARIO PARA AGREGAR EVIDENCIA
+===================================================== */
+
+.activity-evidence-create {
+  display: grid;
+  gap: 14px;
+  padding: 17px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 15px;
+}
+
+.activity-evidence-create > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3730a3;
+}
+
+.activity-evidence-create label {
+  display: grid;
+  gap: 7px;
+  color: #354563;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.activity-evidence-create .activity-input-icon {
+  width: 100%;
+}
+
+.activity-evidence-create input {
+  width: 100%;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 0 15px 0 46px;
+  color: #172033;
+  font: inherit;
+  background: #ffffff;
+  border: 1px solid #d8e1ed;
+  border-radius: 13px;
+  outline: none;
+}
+
+.activity-evidence-create textarea {
+  width: 100%;
+  min-height: 94px;
+  box-sizing: border-box;
+  padding: 13px 15px;
+  color: #172033;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  background: #ffffff;
+  border: 1px solid #d8e1ed;
+  border-radius: 13px;
+  outline: none;
+}
+
+.activity-evidence-create input:focus,
+.activity-evidence-create textarea:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 4px rgb(79 70 229 / 11%);
+}
+
+.activity-evidence-create__button {
+  justify-self: end;
+  background: #3559e0;
+}
+
+.activity-evidence-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 14px;
+  color: #64748b;
+  font-size: 13px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+}
+
+/* =====================================================
+   MODALES DE RECHAZO Y REENVÍO
+===================================================== */
+
+.evidence-action-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 58%);
+  backdrop-filter: blur(3px);
+}
+
+.evidence-action-modal {
+  width: min(560px, 100%);
+  overflow: hidden;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 25px 70px rgb(15 23 42 / 30%);
+}
+
+.evidence-action-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 21px 23px;
+  border-bottom: 1px solid #e3e8f0;
+}
+
+.evidence-action-modal__header > div {
+  display: flex;
+  gap: 12px;
+}
+
+.evidence-action-modal__header h2 {
+  margin: 0 0 4px;
+  color: #172033;
+  font-size: 20px;
+}
+
+.evidence-action-modal__header p {
+  margin: 0;
+  color: #697386;
+  font-size: 13px;
+}
+
+.evidence-action-modal__header > button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  cursor: pointer;
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 9px;
+}
+
+.evidence-action-modal__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: #3151cd;
+  background: #e8edff;
+  border-radius: 12px;
+}
+
+.evidence-action-modal__icon--danger {
+  color: #a83232;
+  background: #fdecec;
+}
+
+.evidence-action-modal__body {
+  display: grid;
+  gap: 16px;
+  padding: 22px 23px;
+}
+
+.evidence-action-summary {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  background: #f6f8fc;
+  border-radius: 11px;
+}
+
+.evidence-action-summary a {
+  overflow: hidden;
+  color: #3151cd;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-action-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 13px;
+  color: #805400;
+  background: #fff7e6;
+  border-radius: 11px;
+}
+
+.evidence-action-warning p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.evidence-action-field {
+  display: grid;
+  gap: 7px;
+  color: #354563;
+  font-weight: 700;
+}
+
+.evidence-action-field input {
+  width: 100%;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 0 15px 0 46px;
+  color: #172033;
+  font: inherit;
+  border: 1px solid #d8e1ed;
+  border-radius: 12px;
+  outline: none;
+}
+
+.evidence-action-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  color: #172033;
+  font: inherit;
+  resize: vertical;
+  border: 1px solid #d8e1ed;
+  border-radius: 12px;
+  outline: none;
+}
+
+.evidence-action-field input:focus,
+.evidence-action-field textarea:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 4px rgb(79 70 229 / 11%);
+}
+
+.evidence-action-field small {
+  justify-self: end;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.evidence-action-modal__footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 23px 21px;
+  border-top: 1px solid #e3e8f0;
+}
+
+.evidence-action-danger {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  background: #c43c3c;
+  border: 0;
+  border-radius: 12px;
+}
+
+@media (max-width: 680px) {
+  .activity-evidence-card > header,
+  .activity-evidence-meta,
+  .activity-evidence-review {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .activity-evidence-actions {
+    flex-direction: column;
+  }
+
+  .activity-evidence-actions button,
+  .activity-evidence-create__button {
+    width: 100%;
+  }
+
+  .activity-evidence-create__button {
+    justify-self: stretch;
+  }
+
+  .evidence-action-modal__footer {
+    grid-template-columns: 1fr;
+  }
 }

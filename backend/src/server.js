@@ -192,6 +192,82 @@ function requireAdminRole(
   return next();
 }
 
+function normalizeHttpUrl(value) {
+  const cleanValue =
+    typeof value === 'string'
+      ? value.trim()
+      : '';
+
+  if (
+    !cleanValue ||
+    cleanValue.length > 2048
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(cleanValue);
+
+    if (
+      ![
+        'http:',
+        'https:',
+      ].includes(url.protocol)
+    ) {
+      return null;
+    }
+
+    return cleanValue;
+  } catch {
+    return null;
+  }
+}
+
+async function getEvidenceById(
+  queryable,
+  idEvidence,
+) {
+  const result = await queryable.query(
+    `
+      SELECT
+        e.id_evidencia AS id,
+        e.id_actividad AS "idActividad",
+        e.id_usuario_envia AS "idUsuarioEnvia",
+        sender.nombre AS "enviadoPor",
+        e.enlace,
+        COALESCE(
+          e.descripcion,
+          ''
+        ) AS descripcion,
+        e.estado,
+        e.id_usuario_revisa AS "idUsuarioRevisa",
+        reviewer.nombre AS revisor,
+        COALESCE(
+          e.observacion_revision,
+          ''
+        ) AS "observacionRevision",
+        e.creado_en AS "creadoEn",
+        e.revisado_en AS "revisadoEn"
+
+      FROM evidencias e
+
+      INNER JOIN usuarios sender
+        ON sender.id_usuario =
+          e.id_usuario_envia
+
+      LEFT JOIN usuarios reviewer
+        ON reviewer.id_usuario =
+          e.id_usuario_revisa
+
+      WHERE e.id_evidencia = $1
+      LIMIT 1
+    `,
+    [idEvidence],
+  );
+
+  return result.rows[0] || null;
+}
+
 /* =========================================
    HEALTH
 ========================================= */
@@ -1474,7 +1550,6 @@ app.post(
 /* =========================================
    REGISTRAR ACTIVIDAD
 ========================================= */
-
 app.post(
   '/api/activities',
   requireAccessToken,
@@ -1706,23 +1781,71 @@ app.get(
             WHERE c.id_actividad = a.id_actividad
           ) AS comentarios,
 
-          COALESCE(
+COALESCE(
   (
     SELECT json_agg(
       json_build_object(
-        'id', e.id_evidencia,
-        'enlace', e.enlace,
-        'descripcion', e.descripcion,
-        'estado', e.estado
+        'id',
+          e.id_evidencia,
+
+        'idActividad',
+          e.id_actividad,
+
+        'idUsuarioEnvia',
+          e.id_usuario_envia,
+
+        'enviadoPor',
+          sender.nombre,
+
+        'enlace',
+          e.enlace,
+
+        'descripcion',
+          COALESCE(
+            e.descripcion,
+            ''
+          ),
+
+        'estado',
+          e.estado,
+
+        'idUsuarioRevisa',
+          e.id_usuario_revisa,
+
+        'revisor',
+          reviewer.nombre,
+
+        'observacionRevision',
+          COALESCE(
+            e.observacion_revision,
+            ''
+          ),
+
+        'creadoEn',
+          e.creado_en,
+
+        'revisadoEn',
+          e.revisado_en
       )
       ORDER BY e.id_evidencia
     )
+
     FROM evidencias e
-    WHERE e.id_actividad = a.id_actividad
+
+    INNER JOIN usuarios sender
+      ON sender.id_usuario =
+        e.id_usuario_envia
+
+    LEFT JOIN usuarios reviewer
+      ON reviewer.id_usuario =
+        e.id_usuario_revisa
+
+    WHERE e.id_actividad =
+      a.id_actividad
   ),
   '[]'::json
 ) AS evidencias
-
+ 
         FROM actividades a
 
         INNER JOIN usuarios creador
@@ -1818,54 +1941,15 @@ app.patch(
           : '';
 
       const estatus =
-        typeof request.body?.estatus === 'string'
-          ? request.body.estatus
-              .trim()
-              .toUpperCase()
-          : '';
+  typeof request.body?.estatus === 'string'
+    ? request.body.estatus
+        .trim()
+        .toUpperCase()
+    : '';
 
-      const evidenciasRecibidas =
-  Array.isArray(request.body?.evidencias)
-    ? request.body.evidencias
-    : [];
+const errors = {};
 
-const evidencias = evidenciasRecibidas
-  .filter(
-    (evidencia) =>
-      typeof evidencia === 'string',
-  )
-  .map((evidencia) =>
-    evidencia.trim(),
-  )
-  .filter(Boolean);
-
-      const errors = {};
-    
-if (evidencias.length > 20) {
-  errors.evidencias =
-    'Solo puedes agregar hasta 20 evidencias.';
-}
-
-const evidenciaInvalida =
-  evidencias.find((enlace) => {
-    try {
-      const url = new URL(enlace);
-
-      return ![
-        'http:',
-        'https:',
-      ].includes(url.protocol);
-    } catch {
-      return true;
-    }
-  });
-
-if (evidenciaInvalida) {
-  errors.evidencias =
-    'Todas las evidencias deben contener un enlace válido.';
-}
-
-      if (!titulo) {
+if (!titulo) {
         errors.titulo =
           'El título es obligatorio.';
       } else if (titulo.length > 180) {
@@ -1966,9 +2050,6 @@ const isResponsible =
   Number(existingActivity.id_responsable) ===
   request.auth.idUsuario;
 
-const isAdmin =
-  request.auth.rol === 'ADMIN';
-
 if (
   !isCreator &&
   !isResponsible
@@ -2021,16 +2102,77 @@ if (cambioEstatus) {
     });
   }
 
-  if (
-    responsablePuedeEnviarRevision &&
-    evidencias.length === 0
-  ) {
+  if (responsablePuedeEnviarRevision) {
+  const evidenceSummaryResult =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::INTEGER AS total,
+
+          COUNT(*) FILTER (
+            WHERE estado = 'RECHAZADA'
+          )::INTEGER AS rechazadas
+
+        FROM evidencias
+        WHERE id_actividad = $1
+      `,
+      [idActividad],
+    );
+
+  const evidenceSummary =
+    evidenceSummaryResult.rows[0];
+
+  if (evidenceSummary.total === 0) {
     return response.status(400).json({
       ok: false,
       message:
         'Debes registrar al menos una evidencia antes de enviar la actividad a revisión.',
     });
   }
+
+  if (
+    evidenceSummary.rechazadas > 0
+  ) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'Debes corregir y reenviar todas las evidencias rechazadas.',
+    });
+  }
+}
+  
+if (creadorPuedeCompletar) {
+  const reviewSummaryResult =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::INTEGER AS total,
+
+          COUNT(*) FILTER (
+            WHERE estado <> 'APROBADA'
+          )::INTEGER AS no_aprobadas
+
+        FROM evidencias
+        WHERE id_actividad = $1
+      `,
+      [idActividad],
+    );
+
+  const reviewSummary =
+    reviewSummaryResult.rows[0];
+
+  if (
+    reviewSummary.total === 0 ||
+    reviewSummary.no_aprobadas > 0
+  ) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'Todas las evidencias deben estar aprobadas antes de completar la actividad.',
+    });
+  }
+}
+
 }
 
 const datosGeneralesCambiaron =
@@ -2053,9 +2195,21 @@ if (
   });
 }
 
+const idResponsableActual =
+  existingActivity.id_responsable === null ||
+  existingActivity.id_responsable === undefined
+    ? null
+    : Number(
+        existingActivity.id_responsable,
+      );
 
-      if (
+const responsableCambiado =
   responsableProvisto &&
+  idResponsable !==
+    idResponsableActual;
+
+if (
+  responsableCambiado &&
   !isCreator
 ) {
   return response.status(403).json({
@@ -2069,7 +2223,7 @@ if (
         existingActivity.id_responsable ??
         null;
 
-      if (responsableProvisto) {
+      if (responsableCambiado) {
         if (idResponsable !== null) {
           const responsableResult =
             await pool.query(
@@ -2148,47 +2302,44 @@ try {
     ],
   );
 
+  const evidenciasResult =
   await client.query(
     `
-      DELETE FROM evidencias
-      WHERE id_actividad = $1
+      SELECT
+        e.id_evidencia AS id,
+        e.id_actividad AS "idActividad",
+        e.id_usuario_envia AS "idUsuarioEnvia",
+        sender.nombre AS "enviadoPor",
+        e.enlace,
+        COALESCE(
+          e.descripcion,
+          ''
+        ) AS descripcion,
+        e.estado,
+        e.id_usuario_revisa AS "idUsuarioRevisa",
+        reviewer.nombre AS revisor,
+        COALESCE(
+          e.observacion_revision,
+          ''
+        ) AS "observacionRevision",
+        e.creado_en AS "creadoEn",
+        e.revisado_en AS "revisadoEn"
+
+      FROM evidencias e
+
+      INNER JOIN usuarios sender
+        ON sender.id_usuario =
+          e.id_usuario_envia
+
+      LEFT JOIN usuarios reviewer
+        ON reviewer.id_usuario =
+          e.id_usuario_revisa
+
+      WHERE e.id_actividad = $1
+      ORDER BY e.id_evidencia
     `,
     [idActividad],
   );
-
-  for (const enlace of evidencias) {
-    await client.query(
-      `
-        INSERT INTO evidencias (
-          id_actividad,
-          id_usuario_envia,
-          enlace
-        )
-        VALUES ($1, $2, $3)
-      `,
-      [
-        idActividad,
-        request.auth.idUsuario,
-        enlace,
-      ],
-    );
-  }
-
-  const evidenciasResult =
-    await client.query(
-      `
-        SELECT
-          id_evidencia AS id,
-          enlace,
-          descripcion,
-          estado,
-          creado_en AS "creadoEn"
-        FROM evidencias
-        WHERE id_actividad = $1
-        ORDER BY id_evidencia
-      `,
-      [idActividad],
-    );
 
   await client.query('COMMIT');
 
@@ -2218,6 +2369,590 @@ try {
         ok: false,
         message:
           'No fue posible actualizar la actividad.',
+      });
+    }
+  },
+);
+
+
+/* =========================================
+   REGISTRAR EVIDENCIA
+========================================= */
+
+app.post(
+  '/api/activities/:id/evidences',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idActivity = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idActivity) ||
+        idActivity <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador de la actividad no es válido.',
+        });
+      }
+
+      const link =
+        normalizeHttpUrl(
+          request.body?.enlace,
+        );
+
+      const description =
+        typeof request.body?.descripcion ===
+        'string'
+          ? request.body.descripcion.trim()
+          : '';
+
+      const errors = {};
+
+      if (!link) {
+        errors.enlace =
+          'Ingresa un enlace HTTP o HTTPS válido.';
+      }
+
+      if (description.length > 1000) {
+        errors.descripcion =
+          'La descripción no puede superar 1000 caracteres.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la evidencia.',
+          errors,
+        });
+      }
+
+      const activityResult =
+        await pool.query(
+          `
+            SELECT
+              id_actividad,
+              id_responsable,
+              estatus
+            FROM actividades
+            WHERE id_actividad = $1
+            LIMIT 1
+          `,
+          [idActivity],
+        );
+
+      const activity =
+        activityResult.rows[0];
+
+      if (!activity) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const isResponsible =
+        Number(activity.id_responsable) ===
+        request.auth.idUsuario;
+
+      if (!isResponsible) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'Solo el responsable puede registrar evidencias.',
+        });
+      }
+
+      if (
+        activity.estatus !==
+        'EN_PROCESO'
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Solo puedes registrar evidencias mientras la actividad está en proceso.',
+        });
+      }
+
+      const countResult =
+        await pool.query(
+          `
+            SELECT COUNT(*)::INTEGER AS total
+            FROM evidencias
+            WHERE id_actividad = $1
+          `,
+          [idActivity],
+        );
+
+      if (
+        countResult.rows[0].total >= 20
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Solo puedes registrar hasta 20 evidencias por actividad.',
+        });
+      }
+
+      const insertResult =
+        await pool.query(
+          `
+            INSERT INTO evidencias (
+              id_actividad,
+              id_usuario_envia,
+              enlace,
+              descripcion
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4
+            )
+            RETURNING id_evidencia
+          `,
+          [
+            idActivity,
+            request.auth.idUsuario,
+            link,
+            description || null,
+          ],
+        );
+
+      const evidence =
+        await getEvidenceById(
+          pool,
+          insertResult.rows[0]
+            .id_evidencia,
+        );
+
+      return response.status(201).json({
+        ok: true,
+        message:
+          'Evidencia registrada correctamente.',
+        evidencia: evidence,
+        actividad: {
+          id: String(idActivity),
+          estatus: activity.estatus,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error registrando evidencia:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible registrar la evidencia.',
+      });
+    }
+  },
+);
+
+/* =========================================
+   REVISAR EVIDENCIA
+========================================= */
+
+app.patch(
+  '/api/evidences/:id/review',
+  requireAccessToken,
+  async (request, response) => {
+    const client =
+      await pool.connect();
+
+    try {
+      const idEvidence = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idEvidence) ||
+        idEvidence <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador de la evidencia no es válido.',
+        });
+      }
+
+      const status =
+        typeof request.body?.estado ===
+        'string'
+          ? request.body.estado
+              .trim()
+              .toUpperCase()
+          : '';
+
+      const observation =
+        typeof request.body?.observacion ===
+        'string'
+          ? request.body.observacion.trim()
+          : '';
+
+      if (
+        ![
+          'APROBADA',
+          'RECHAZADA',
+        ].includes(status)
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La evidencia solo puede aprobarse o rechazarse.',
+        });
+      }
+
+      if (
+        status === 'RECHAZADA' &&
+        !observation
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La observación es obligatoria cuando la evidencia es rechazada.',
+          errors: {
+            observacion:
+              'Escribe el motivo del rechazo.',
+          },
+        });
+      }
+
+      if (observation.length > 1000) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La observación no puede superar 1000 caracteres.',
+        });
+      }
+
+      await client.query('BEGIN');
+
+      const evidenceResult =
+        await client.query(
+          `
+            SELECT
+              e.id_evidencia,
+              e.estado,
+              a.id_actividad,
+              a.id_creador,
+              a.estatus
+            FROM evidencias e
+
+            INNER JOIN actividades a
+              ON a.id_actividad =
+                e.id_actividad
+
+            WHERE e.id_evidencia = $1
+            FOR UPDATE
+          `,
+          [idEvidence],
+        );
+
+      const evidence =
+        evidenceResult.rows[0];
+
+      if (!evidence) {
+        await client.query('ROLLBACK');
+
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La evidencia no existe.',
+        });
+      }
+
+      const isCreator =
+        Number(evidence.id_creador) ===
+        request.auth.idUsuario;
+
+      if (!isCreator) {
+        await client.query('ROLLBACK');
+
+        return response.status(403).json({
+          ok: false,
+          message:
+            'Solo el creador de la actividad puede revisar esta evidencia.',
+        });
+      }
+
+      if (
+        evidence.estatus !==
+        'EN_REVISION'
+      ) {
+        await client.query('ROLLBACK');
+
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La actividad debe estar en revisión.',
+        });
+      }
+
+      if (
+        evidence.estado !==
+        'PENDIENTE'
+      ) {
+        await client.query('ROLLBACK');
+
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Esta evidencia ya fue revisada.',
+        });
+      }
+
+      await client.query(
+        `
+          UPDATE evidencias
+          SET
+            estado = $1,
+            id_usuario_revisa = $2,
+            observacion_revision = $3,
+            revisado_en = NOW()
+          WHERE id_evidencia = $4
+        `,
+        [
+          status,
+          request.auth.idUsuario,
+          observation || null,
+          idEvidence,
+        ],
+      );
+
+      let activityStatus =
+        evidence.estatus;
+
+      if (status === 'RECHAZADA') {
+        activityStatus =
+          'EN_PROCESO';
+
+        await client.query(
+          `
+            UPDATE actividades
+            SET estatus = 'EN_PROCESO'
+            WHERE id_actividad = $1
+          `,
+          [evidence.id_actividad],
+        );
+      }
+
+      const updatedEvidence =
+        await getEvidenceById(
+          client,
+          idEvidence,
+        );
+
+      await client.query('COMMIT');
+
+      return response.status(200).json({
+        ok: true,
+        message:
+          status === 'APROBADA'
+            ? 'Evidencia aprobada correctamente.'
+            : 'Evidencia rechazada correctamente.',
+        evidencia: updatedEvidence,
+        actividad: {
+          id: String(
+            evidence.id_actividad,
+          ),
+          estatus: activityStatus,
+        },
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+
+      console.error(
+        'Error revisando evidencia:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible revisar la evidencia.',
+      });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+/* =========================================
+   CORREGIR Y REENVIAR EVIDENCIA
+========================================= */
+
+app.patch(
+  '/api/evidences/:id/resubmit',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idEvidence = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idEvidence) ||
+        idEvidence <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'El identificador de la evidencia no es válido.',
+        });
+      }
+
+      const link =
+        normalizeHttpUrl(
+          request.body?.enlace,
+        );
+
+      const description =
+        typeof request.body?.descripcion ===
+        'string'
+          ? request.body.descripcion.trim()
+          : '';
+
+      const errors = {};
+
+      if (!link) {
+        errors.enlace =
+          'Ingresa un enlace HTTP o HTTPS válido.';
+      }
+
+      if (description.length > 1000) {
+        errors.descripcion =
+          'La descripción no puede superar 1000 caracteres.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Verifica los datos de la evidencia.',
+          errors,
+        });
+      }
+
+      const existingResult =
+        await pool.query(
+          `
+            SELECT
+              e.id_evidencia,
+              e.estado,
+              a.id_actividad,
+              a.id_responsable,
+              a.estatus
+            FROM evidencias e
+
+            INNER JOIN actividades a
+              ON a.id_actividad =
+                e.id_actividad
+
+            WHERE e.id_evidencia = $1
+            LIMIT 1
+          `,
+          [idEvidence],
+        );
+
+      const evidence =
+        existingResult.rows[0];
+
+      if (!evidence) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La evidencia no existe.',
+        });
+      }
+
+      const isResponsible =
+        Number(
+          evidence.id_responsable,
+        ) === request.auth.idUsuario;
+
+      if (!isResponsible) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'Solo el responsable puede corregir esta evidencia.',
+        });
+      }
+
+      if (
+        evidence.estado !==
+        'RECHAZADA'
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'Solo pueden reenviarse evidencias rechazadas.',
+        });
+      }
+
+      if (
+        evidence.estatus !==
+        'EN_PROCESO'
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La actividad debe estar en proceso para corregir la evidencia.',
+        });
+      }
+
+      await pool.query(
+        `
+          UPDATE evidencias
+          SET
+            enlace = $1,
+            descripcion = $2,
+            estado = 'PENDIENTE'
+          WHERE id_evidencia = $3
+        `,
+        [
+          link,
+          description || null,
+          idEvidence,
+        ],
+      );
+
+      const updatedEvidence =
+        await getEvidenceById(
+          pool,
+          idEvidence,
+        );
+
+      return response.status(200).json({
+        ok: true,
+        message:
+          'Evidencia corregida y reenviada correctamente.',
+        evidencia: updatedEvidence,
+        actividad: {
+          id: String(
+            evidence.id_actividad,
+          ),
+          estatus:
+            evidence.estatus,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error reenviando evidencia:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible reenviar la evidencia.',
       });
     }
   },
@@ -2279,9 +3014,6 @@ app.get(
       const isResponsible =
   Number(activity.id_responsable) ===
   request.auth.idUsuario;
-
-const isAdmin =
-  request.auth.rol === 'ADMIN';
 
 if (
   !isCreator &&
