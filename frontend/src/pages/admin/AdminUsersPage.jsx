@@ -38,10 +38,13 @@ import AdminUserEditModal from '../../components/admin/AdminUserEditModal.jsx';
 import AdminUserPasswordModal from '../../components/admin/AdminUserPasswordModal.jsx';
 import AdminUserStatusModal from '../../components/admin/AdminUserStatusModal.jsx';
 import DeadlinesPanel from '../../components/activities/DeadlinesPanel.jsx';
+import IndicatorsPanel from '../../components/activities/IndicatorsPanel.jsx';
 import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
 
 import '../../styles/admin-users.css';
 import '../../styles/dashboard.css';
+import '../../styles/deadlines-panel.css';
+import '../../styles/indicators-panel.css';
 
 function formatDate(dateValue) {
   if (!dateValue) {
@@ -465,6 +468,13 @@ async function handleResetPassword(
         >
             {successMessage}
         </div>
+        )}
+
+        {!activitiesLoading && (
+          <IndicatorsPanel
+            activities={activities}
+            currentUser={user}
+          />
         )}
 
         {!activitiesLoading && (
