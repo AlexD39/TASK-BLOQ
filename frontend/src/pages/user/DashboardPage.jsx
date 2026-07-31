@@ -5,8 +5,10 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import {createActivity, getActivities, getUsers, updateActivity,} from '../../services/activities.service.js';
 import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
 import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
+import MyActivitiesSummary from '../../components/activities/MyActivitiesSummary.jsx';
 
 import '../../styles/dashboard.css';
+import '../../styles/my-activities-summary.css';
 
 function getInitials(name = '') {
   return name
@@ -610,6 +612,11 @@ export default function DashboardPage() {
             </p>
           </article>
         </section>
+
+       <MyActivitiesSummary
+          activities={activities}
+          currentUser={user}
+        />
 
        <ActivitiesBoard
           activities={activities}
