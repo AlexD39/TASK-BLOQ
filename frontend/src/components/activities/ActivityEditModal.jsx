@@ -136,7 +136,6 @@ export default function ActivityEditModal({
   onReviewEvidence,
   onResubmitEvidence,
   users = [],
-  canAssignResponsible = false,
 }) {
   
 const [form, setForm] = useState({
@@ -658,12 +657,12 @@ const cleanData = {
   descripcion:
     form.descripcion.trim(),
 
-  ...(canManageResponsible
-  ? {
-      idResponsable:
-        form.idResponsable || null,
-    }
-  : {}),
+  ...(isCreator
+    ? {
+        idResponsable:
+          form.idResponsable || null,
+      }
+    : {}),
 
   fechaLimite:
     form.fechaLimite,
@@ -1288,7 +1287,7 @@ const formErrors =
                   strokeWidth={1.7}
                 />
 
-                {canManageResponsible ? (
+                {isCreator ? (
                   <select
                     id="edit-idResponsable"
                     name="idResponsable"
@@ -1322,9 +1321,9 @@ const formErrors =
                 )}
               </div>
 
-              {canManageResponsible && (
+              {!isCreator && (
                 <small className="activity-field__help">
-                  Solo el creador puede cambiar 
+                  Solo el creador puede cambiar
                   al responsable.
                 </small>
               )}

@@ -57,17 +57,8 @@ const isEditModalOpen =
   const [users, setUsers] =
     useState([]);
 
-  const canAssignResponsible =
-    user?.role === 'USUARIO';
-
   useEffect(() => {
     let componentIsMounted = true;
-
-    if (!canAssignResponsible) {
-      setUsers([]);
-
-      return undefined;
-    }
 
     async function loadUsers() {
       try {
@@ -93,7 +84,7 @@ const isEditModalOpen =
     return () => {
       componentIsMounted = false;
     };
-  }, [canAssignResponsible]);
+  }, []);
 
     useEffect(() => {
     let componentIsMounted = true;
@@ -782,37 +773,19 @@ async function handleResubmitEvidence(
         }
         onSubmit={handleCreateActivity}
         users={users}
-        canAssignResponsible={
-          canAssignResponsible
-        }
       />
 
-{selectedActivity && (
-  <ActivityEditModal
-    key={selectedActivity.id}
-    isOpen={isEditModalOpen}
-    activity={selectedActivity}
-    currentUser={user}
-    onClose={handleCloseEditModal}
-    onSubmit={handleUpdateActivity}
-    onCommentCreated={
-      handleCommentCreated
-    }
-    onCreateEvidence={
-      handleCreateEvidence
-    }
-    onReviewEvidence={
-      handleReviewEvidence
-    }
-    onResubmitEvidence={
-      handleResubmitEvidence
-    }
-    users={users}
-    canAssignResponsible={
-      canAssignResponsible
-    }
-  />
-)}
+<ActivityEditModal
+  isOpen={isEditModalOpen}
+  activity={selectedActivity}
+  currentUser={user}
+  onClose={handleCloseEditModal}
+  onSubmit={handleUpdateActivity}
+  onCommentCreated={
+    handleCommentCreated
+  }
+  users={users}
+/>
 
     </div>
   );
