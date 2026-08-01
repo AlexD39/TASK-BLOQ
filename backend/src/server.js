@@ -192,6 +192,82 @@ function requireAdminRole(
   return next();
 }
 
+function normalizeHttpUrl(value) {
+  const cleanValue =
+    typeof value === 'string'
+      ? value.trim()
+      : '';
+
+  if (
+    !cleanValue ||
+    cleanValue.length > 2048
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(cleanValue);
+
+    if (
+      ![
+        'http:',
+        'https:',
+      ].includes(url.protocol)
+    ) {
+      return null;
+    }
+
+    return cleanValue;
+  } catch {
+    return null;
+  }
+}
+
+async function getEvidenceById(
+  queryable,
+  idEvidence,
+) {
+  const result = await queryable.query(
+    `
+      SELECT
+        e.id_evidencia AS id,
+        e.id_actividad AS "idActividad",
+        e.id_usuario_envia AS "idUsuarioEnvia",
+        sender.nombre AS "enviadoPor",
+        e.enlace,
+        COALESCE(
+          e.descripcion,
+          ''
+        ) AS descripcion,
+        e.estado,
+        e.id_usuario_revisa AS "idUsuarioRevisa",
+        reviewer.nombre AS revisor,
+        COALESCE(
+          e.observacion_revision,
+          ''
+        ) AS "observacionRevision",
+        e.creado_en AS "creadoEn",
+        e.revisado_en AS "revisadoEn"
+
+      FROM evidencias e
+
+      INNER JOIN usuarios sender
+        ON sender.id_usuario =
+          e.id_usuario_envia
+
+      LEFT JOIN usuarios reviewer
+        ON reviewer.id_usuario =
+          e.id_usuario_revisa
+
+      WHERE e.id_evidencia = $1
+      LIMIT 1
+    `,
+    [idEvidence],
+  );
+
+  return result.rows[0] || null;
+}
+
 /* =========================================
    HEALTH
 ========================================= */
@@ -1474,7 +1550,6 @@ app.post(
 /* =========================================
    REGISTRAR ACTIVIDAD
 ========================================= */
-
 app.post(
   '/api/activities',
   requireAccessToken,
@@ -1720,23 +1795,71 @@ app.get(
   '[]'::json
 ) AS "comentariosDetalle",
 
-          COALESCE(
+COALESCE(
   (
     SELECT json_agg(
       json_build_object(
-        'id', e.id_evidencia,
-        'enlace', e.enlace,
-        'descripcion', e.descripcion,
-        'estado', e.estado
+        'id',
+          e.id_evidencia,
+
+        'idActividad',
+          e.id_actividad,
+
+        'idUsuarioEnvia',
+          e.id_usuario_envia,
+
+        'enviadoPor',
+          sender.nombre,
+
+        'enlace',
+          e.enlace,
+
+        'descripcion',
+          COALESCE(
+            e.descripcion,
+            ''
+          ),
+
+        'estado',
+          e.estado,
+
+        'idUsuarioRevisa',
+          e.id_usuario_revisa,
+
+        'revisor',
+          reviewer.nombre,
+
+        'observacionRevision',
+          COALESCE(
+            e.observacion_revision,
+            ''
+          ),
+
+        'creadoEn',
+          e.creado_en,
+
+        'revisadoEn',
+          e.revisado_en
       )
       ORDER BY e.id_evidencia
     )
+
     FROM evidencias e
-    WHERE e.id_actividad = a.id_actividad
+
+    INNER JOIN usuarios sender
+      ON sender.id_usuario =
+        e.id_usuario_envia
+
+    LEFT JOIN usuarios reviewer
+      ON reviewer.id_usuario =
+        e.id_usuario_revisa
+
+    WHERE e.id_actividad =
+      a.id_actividad
   ),
   '[]'::json
 ) AS evidencias
-
+ 
         FROM actividades a
 
         INNER JOIN usuarios creador
@@ -1832,54 +1955,15 @@ app.patch(
           : '';
 
       const estatus =
-        typeof request.body?.estatus === 'string'
-          ? request.body.estatus
-              .trim()
-              .toUpperCase()
-          : '';
+  typeof request.body?.estatus === 'string'
+    ? request.body.estatus
+        .trim()
+        .toUpperCase()
+    : '';
 
-      const evidenciasRecibidas =
-  Array.isArray(request.body?.evidencias)
-    ? request.body.evidencias
-    : [];
+const errors = {};
 
-const evidencias = evidenciasRecibidas
-  .filter(
-    (evidencia) =>
-      typeof evidencia === 'string',
-  )
-  .map((evidencia) =>
-    evidencia.trim(),
-  )
-  .filter(Boolean);
-
-      const errors = {};
-    
-if (evidencias.length > 20) {
-  errors.evidencias =
-    'Solo puedes agregar hasta 20 evidencias.';
-}
-
-const evidenciaInvalida =
-  evidencias.find((enlace) => {
-    try {
-      const url = new URL(enlace);
-
-      return ![
-        'http:',
-        'https:',
-      ].includes(url.protocol);
-    } catch {
-      return true;
-    }
-  });
-
-if (evidenciaInvalida) {
-  errors.evidencias =
-    'Todas las evidencias deben contener un enlace válido.';
-}
-
-      if (!titulo) {
+if (!titulo) {
         errors.titulo =
           'El título es obligatorio.';
       } else if (titulo.length > 180) {
@@ -1980,9 +2064,6 @@ const isResponsible =
   Number(existingActivity.id_responsable) ===
   request.auth.idUsuario;
 
-const isAdmin =
-  request.auth.rol === 'ADMIN';
-
 if (
   !isCreator &&
   !isResponsible
@@ -2035,16 +2116,77 @@ if (cambioEstatus) {
     });
   }
 
-  if (
-    responsablePuedeEnviarRevision &&
-    evidencias.length === 0
-  ) {
+  if (responsablePuedeEnviarRevision) {
+  const evidenceSummaryResult =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::INTEGER AS total,
+
+          COUNT(*) FILTER (
+            WHERE estado = 'RECHAZADA'
+          )::INTEGER AS rechazadas
+
+        FROM evidencias
+        WHERE id_actividad = $1
+      `,
+      [idActividad],
+    );
+
+  const evidenceSummary =
+    evidenceSummaryResult.rows[0];
+
+  if (evidenceSummary.total === 0) {
     return response.status(400).json({
       ok: false,
       message:
         'Debes registrar al menos una evidencia antes de enviar la actividad a revisión.',
     });
   }
+
+  if (
+    evidenceSummary.rechazadas > 0
+  ) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'Debes corregir y reenviar todas las evidencias rechazadas.',
+    });
+  }
+}
+  
+if (creadorPuedeCompletar) {
+  const reviewSummaryResult =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::INTEGER AS total,
+
+          COUNT(*) FILTER (
+            WHERE estado <> 'APROBADA'
+          )::INTEGER AS no_aprobadas
+
+        FROM evidencias
+        WHERE id_actividad = $1
+      `,
+      [idActividad],
+    );
+
+  const reviewSummary =
+    reviewSummaryResult.rows[0];
+
+  if (
+    reviewSummary.total === 0 ||
+    reviewSummary.no_aprobadas > 0
+  ) {
+    return response.status(400).json({
+      ok: false,
+      message:
+        'Todas las evidencias deben estar aprobadas antes de completar la actividad.',
+    });
+  }
+}
+
 }
 
 const datosGeneralesCambiaron =
@@ -2067,9 +2209,21 @@ if (
   });
 }
 
+const idResponsableActual =
+  existingActivity.id_responsable === null ||
+  existingActivity.id_responsable === undefined
+    ? null
+    : Number(
+        existingActivity.id_responsable,
+      );
 
-      if (
+const responsableCambiado =
   responsableProvisto &&
+  idResponsable !==
+    idResponsableActual;
+
+if (
+  responsableCambiado &&
   !isCreator
 ) {
   return response.status(403).json({
@@ -2083,7 +2237,7 @@ if (
         existingActivity.id_responsable ??
         null;
 
-      if (responsableProvisto) {
+      if (responsableCambiado) {
         if (idResponsable !== null) {
           const responsableResult =
             await pool.query(
@@ -2162,47 +2316,44 @@ try {
     ],
   );
 
+  const evidenciasResult =
   await client.query(
     `
-      DELETE FROM evidencias
-      WHERE id_actividad = $1
+      SELECT
+        e.id_evidencia AS id,
+        e.id_actividad AS "idActividad",
+        e.id_usuario_envia AS "idUsuarioEnvia",
+        sender.nombre AS "enviadoPor",
+        e.enlace,
+        COALESCE(
+          e.descripcion,
+          ''
+        ) AS descripcion,
+        e.estado,
+        e.id_usuario_revisa AS "idUsuarioRevisa",
+        reviewer.nombre AS revisor,
+        COALESCE(
+          e.observacion_revision,
+          ''
+        ) AS "observacionRevision",
+        e.creado_en AS "creadoEn",
+        e.revisado_en AS "revisadoEn"
+
+      FROM evidencias e
+
+      INNER JOIN usuarios sender
+        ON sender.id_usuario =
+          e.id_usuario_envia
+
+      LEFT JOIN usuarios reviewer
+        ON reviewer.id_usuario =
+          e.id_usuario_revisa
+
+      WHERE e.id_actividad = $1
+      ORDER BY e.id_evidencia
     `,
     [idActividad],
   );
-
-  for (const enlace of evidencias) {
-    await client.query(
-      `
-        INSERT INTO evidencias (
-          id_actividad,
-          id_usuario_envia,
-          enlace
-        )
-        VALUES ($1, $2, $3)
-      `,
-      [
-        idActividad,
-        request.auth.idUsuario,
-        enlace,
-      ],
-    );
-  }
-
-  const evidenciasResult =
-    await client.query(
-      `
-        SELECT
-          id_evidencia AS id,
-          enlace,
-          descripcion,
-          estado,
-          creado_en AS "creadoEn"
-        FROM evidencias
-        WHERE id_actividad = $1
-        ORDER BY id_evidencia
-      `,
-      [idActividad],
-    );
 
   await client.query('COMMIT');
 
@@ -2237,6 +2388,9 @@ try {
   },
 );
 
+
+/* =========================================
+   REGISTRAR EVIDENCIA
 app.post(
   '/api/activities/:id/comments',
   requireAccessToken,

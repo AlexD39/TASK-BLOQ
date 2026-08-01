@@ -2,7 +2,16 @@ import {useEffect, useMemo, useState, } from 'react';
 import { CheckCircle2, ClipboardList, Clock3, Eye, LogOut, Plus,  RefreshCw, TrendingUp, } from 'lucide-react';
 import ActivityFormModal from '../../components/activities/ActivityFormModal.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import {createActivity, getActivities, getUsers, updateActivity,} from '../../services/activities.service.js';
+import {
+  createActivity,
+  createActivityEvidence,
+  getActivities,
+  getUsers,
+  resubmitActivityEvidence,
+  reviewActivityEvidence,
+  updateActivity,
+} from '../../services/activities.service.js';
+
 import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
 import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
 import MyActivitiesSummary from '../../components/activities/MyActivitiesSummary.jsx';
@@ -34,11 +43,13 @@ export default function DashboardPage() {
   const [activitiesError, setActivitiesError] =
   useState('');
 
-  const [selectedActivity,setSelectedActivity,] = 
-  useState(null);
+  const [
+  selectedActivity,
+  setSelectedActivity,
+] = useState(null);
 
- const [isEditModalOpen, setIsEditModalOpen,] = 
-  useState(false);
+const isEditModalOpen =
+  Boolean(selectedActivity);
 
   const [notification, setNotification] =
     useState(null);
@@ -128,14 +139,12 @@ export default function DashboardPage() {
   }, []);
 
   function handleOpenEditModal(activity) {
-    setSelectedActivity(activity);
-    setIsEditModalOpen(true);
-  }
+  setSelectedActivity(activity);
+}
 
-  function handleCloseEditModal() {
-    setIsEditModalOpen(false);
-    setSelectedActivity(null);
-  }
+function handleCloseEditModal() {
+  setSelectedActivity(null);
+}
 
   async function handleUpdateActivity(
     activityId,
@@ -183,6 +192,8 @@ export default function DashboardPage() {
                 : savedActivity.fechaLimite,
             prioridad:
               savedActivity.prioridad,
+            estatus:
+              savedActivity.estatus,
             evidencias:
   Array.isArray(
     savedActivity.evidencias,
@@ -368,6 +379,143 @@ export default function DashboardPage() {
       (activity) => activity.estatus === status,
     );
   }
+
+  function applyEvidenceResult(result) {
+  const savedEvidence =
+    result.evidencia;
+
+  const activityId =
+    result.actividad?.id;
+
+  const activityStatus =
+    result.actividad?.estatus;
+
+  function updateActivityEvidence(
+    currentActivity,
+  ) {
+    if (
+      String(currentActivity.id) !==
+      String(activityId)
+    ) {
+      return currentActivity;
+    }
+
+    const currentEvidences =
+      Array.isArray(
+        currentActivity.evidencias,
+      )
+        ? currentActivity.evidencias
+        : [];
+
+    const evidenceExists =
+      currentEvidences.some(
+        (evidence) =>
+          String(evidence.id) ===
+          String(savedEvidence.id),
+      );
+
+    const nextEvidences =
+      evidenceExists
+        ? currentEvidences.map(
+            (evidence) =>
+              String(evidence.id) ===
+              String(savedEvidence.id)
+                ? savedEvidence
+                : evidence,
+          )
+        : [
+            ...currentEvidences,
+            savedEvidence,
+          ];
+
+    return {
+      ...currentActivity,
+
+      estatus:
+        activityStatus ||
+        currentActivity.estatus,
+
+      evidencias:
+        nextEvidences,
+    };
+  }
+
+  setActivities(
+    (currentActivities) =>
+      currentActivities.map(
+        updateActivityEvidence,
+      ),
+  );
+
+  setSelectedActivity(
+    (currentActivity) =>
+      currentActivity
+        ? updateActivityEvidence(
+            currentActivity,
+          )
+        : currentActivity,
+  );
+}
+
+async function handleCreateEvidence(
+  activityId,
+  evidenceData,
+) {
+  const result =
+    await createActivityEvidence(
+      activityId,
+      evidenceData,
+    );
+
+  applyEvidenceResult(result);
+
+  setNotification({
+    type: 'success',
+    message: result.message,
+  });
+
+  return result;
+}
+
+async function handleReviewEvidence(
+  evidenceId,
+  reviewData,
+) {
+  const result =
+    await reviewActivityEvidence(
+      evidenceId,
+      reviewData,
+    );
+
+  applyEvidenceResult(result);
+
+  setNotification({
+    type: 'success',
+    message: result.message,
+  });
+
+  return result;
+}
+
+async function handleResubmitEvidence(
+  evidenceId,
+  evidenceData,
+) {
+  const result =
+    await resubmitActivityEvidence(
+      evidenceId,
+      evidenceData,
+    );
+
+  applyEvidenceResult(result);
+
+  setNotification({
+    type: 'success',
+    message: result.message,
+  });
+
+  return result;
+}
 
   function handleCommentCreated(
   activityId,
@@ -639,20 +787,32 @@ export default function DashboardPage() {
         }
       />
 
-<ActivityEditModal
-  isOpen={isEditModalOpen}
-  activity={selectedActivity}
-  currentUser={user}
-  onClose={handleCloseEditModal}
-  onSubmit={handleUpdateActivity}
-  onCommentCreated={
-    handleCommentCreated
-  }
-  users={users}
-  canAssignResponsible={
-    canAssignResponsible
-  }
-/>
+{selectedActivity && (
+  <ActivityEditModal
+    key={selectedActivity.id}
+    isOpen={isEditModalOpen}
+    activity={selectedActivity}
+    currentUser={user}
+    onClose={handleCloseEditModal}
+    onSubmit={handleUpdateActivity}
+    onCommentCreated={
+      handleCommentCreated
+    }
+    onCreateEvidence={
+      handleCreateEvidence
+    }
+    onReviewEvidence={
+      handleReviewEvidence
+    }
+    onResubmitEvidence={
+      handleResubmitEvidence
+    }
+    users={users}
+    canAssignResponsible={
+      canAssignResponsible
+    }
+  />
+)}
 
     </div>
   );

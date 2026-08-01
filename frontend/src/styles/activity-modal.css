@@ -30,6 +30,8 @@
     0 8px 24px rgba(15, 23, 42, 0.16);
 
   animation: activity-modal-enter 180ms ease-out;
+   transform: translateZ(0);
+  will-change: transform;
 }
 
 .activity-modal::before {
@@ -115,6 +117,9 @@
 
   scrollbar-color: #9ca3af #29303a;
   scrollbar-width: thin;
+
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .activity-form__body::-webkit-scrollbar {
@@ -542,6 +547,8 @@
     color:#dc2626;
 }
 
+
+
 .activity-evidence-add{
     display:flex;
     align-items:center;
@@ -561,6 +568,10 @@
     background:#1d4ed8;
 }
 
+
+.activity-comments {
+  display: grid;
+  gap: 14px;
 .activity-comments__header {
   display: flex;
   align-items: center;
@@ -969,9 +980,12 @@
     padding: 20px;
   }
 
-  .activity-comment__top {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+/* =====================================================
+   EVIDENCIAS
   }
 }

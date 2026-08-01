@@ -131,6 +131,102 @@ export async function updateActivity(
   return data;
 }
 
+export async function createActivityEvidence(
+  activityId,
+  evidenceData,
+) {
+  const response = await apiFetch(
+    `/activities/${activityId}/evidences`,
+    {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(evidenceData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible registrar la evidencia.',
+      ),
+    );
+  }
+
+  return data;
+}
+
+export async function reviewActivityEvidence(
+  evidenceId,
+  reviewData,
+) {
+  const response = await apiFetch(
+    `/evidences/${evidenceId}/review`,
+    {
+      method: 'PATCH',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(reviewData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible revisar la evidencia.',
+      ),
+    );
+  }
+
+  return data;
+}
+
+export async function resubmitActivityEvidence(
+  evidenceId,
+  evidenceData,
+) {
+  const response = await apiFetch(
+    `/evidences/${evidenceId}/resubmit`,
+    {
+      method: 'PATCH',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify(evidenceData),
+    },
+  );
+
+  const data =
+    await readResponse(response);
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+        'No fue posible reenviar la evidencia.',
+      ),
+    );
+  }
+
+  return data;
+}
+
 export async function getActivityComments(
   activityId,
 ) {
