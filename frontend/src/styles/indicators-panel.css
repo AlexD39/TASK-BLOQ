@@ -1,0 +1,34 @@
+
+/* =========================================
+   PANEL: INDICADORES GENERAL Y PERSONAL (HU-13.08)
+========================================= */
+
+.indicators-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+
+  margin-bottom: 24px;
+}
+
+.indicators-panel__block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.indicators-panel__title {
+  color: #172033;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.taskboard-indicators--personal {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+@media (max-width: 900px) {
+  .taskboard-indicators--personal {
+    grid-template-columns: 1fr;
+  }
+}
