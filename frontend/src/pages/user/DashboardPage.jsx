@@ -15,9 +15,14 @@ import {
 import ActivitiesBoard from '../../components/activities/ActivitiesBoard.jsx';
 import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
 import MyActivitiesSummary from '../../components/activities/MyActivitiesSummary.jsx';
+import ActivityFiltersBar, {
+  INITIAL_ACTIVITY_FILTERS,
+  applyActivityFilters,
+} from '../../components/activities/ActivityFiltersBar.jsx';
 
 import '../../styles/dashboard.css';
 import '../../styles/my-activities-summary.css';
+import '../../styles/activity-filters.css'; 
 
 function getInitials(name = '') {
   return name
@@ -56,6 +61,9 @@ const isEditModalOpen =
 
   const [users, setUsers] =
     useState([]);
+
+  const [filters, setFilters] =
+    useState(INITIAL_ACTIVITY_FILTERS);
 
   useEffect(() => {
     let componentIsMounted = true;
@@ -228,25 +236,49 @@ function handleCloseEditModal() {
 
   
 
-  const indicators = useMemo(() => {
-    const total = activities.length;
+  const filteredActivities = useMemo(
+    () =>
+      applyActivityFilters(
+        activities,
+        filters,
+        user?.id,
+      ),
+    [activities, filters, user?.id],
+  );
 
-    const pending = activities.filter(
+  function handleFilterChange(
+    fieldName,
+    value,
+  ) {
+    setFilters((currentFilters) => ({
+      ...currentFilters,
+      [fieldName]: value,
+    }));
+  }
+
+  function handleResetFilters() {
+    setFilters(INITIAL_ACTIVITY_FILTERS);
+  }
+
+  const indicators = useMemo(() => {
+    const total = filteredActivities.length;
+
+    const pending = filteredActivities.filter(
       (activity) =>
         activity.estatus === 'PENDIENTE',
     ).length;
 
-    const inProgress = activities.filter(
+    const inProgress = filteredActivities.filter(
       (activity) =>
         activity.estatus === 'EN_PROCESO',
     ).length;
 
-    const inReview = activities.filter(
+    const inReview = filteredActivities.filter(
       (activity) =>
         activity.estatus === 'EN_REVISION',
     ).length;
 
-    const completed = activities.filter(
+    const completed = filteredActivities.filter(
       (activity) =>
         activity.estatus === 'COMPLETADA',
     ).length;
@@ -264,7 +296,7 @@ function handleCloseEditModal() {
       completed,
       progress,
     };
-  }, [activities]);
+  }, [filteredActivities]);
 
   async function handleCreateActivity(
   activityData,
@@ -757,8 +789,17 @@ async function handleResubmitEvidence(
           currentUser={user}
         />
 
+       <ActivityFiltersBar
+          filters={filters}
+          onChange={handleFilterChange}
+          onReset={handleResetFilters}
+          users={users}
+          resultCount={filteredActivities.length}
+          totalCount={activities.length}
+        />
+
        <ActivitiesBoard
-          activities={activities}
+          activities={filteredActivities}
           loading={activitiesLoading}
           error={activitiesError}
           onEditActivity={handleOpenEditModal}
