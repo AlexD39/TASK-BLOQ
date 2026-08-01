@@ -44,17 +44,8 @@ export default function DashboardPage() {
   const [users, setUsers] =
     useState([]);
 
-  const canAssignResponsible =
-    user?.role === 'USUARIO';
-
   useEffect(() => {
     let componentIsMounted = true;
-
-    if (!canAssignResponsible) {
-      setUsers([]);
-
-      return undefined;
-    }
 
     async function loadUsers() {
       try {
@@ -80,7 +71,7 @@ export default function DashboardPage() {
     return () => {
       componentIsMounted = false;
     };
-  }, [canAssignResponsible]);
+  }, []);
 
     useEffect(() => {
     let componentIsMounted = true;
@@ -627,9 +618,6 @@ export default function DashboardPage() {
         }
         onSubmit={handleCreateActivity}
         users={users}
-        canAssignResponsible={
-          canAssignResponsible
-        }
       />
 
 <ActivityEditModal
@@ -642,9 +630,6 @@ export default function DashboardPage() {
     handleCommentCreated
   }
   users={users}
-  canAssignResponsible={
-    canAssignResponsible
-  }
 />
 
     </div>

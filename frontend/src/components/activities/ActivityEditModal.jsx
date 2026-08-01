@@ -126,7 +126,6 @@ export default function ActivityEditModal({
   onSubmit,
   onCommentCreated,
   users = [],
-  canAssignResponsible = false,
 }) {
   
 const [form, setForm] = useState({
@@ -456,7 +455,7 @@ const cleanData = {
   descripcion:
     form.descripcion.trim(),
 
-  ...(canAssignResponsible
+  ...(isCreator
     ? {
         idResponsable:
           form.idResponsable || null,
@@ -862,7 +861,7 @@ const formErrors =
                   strokeWidth={1.7}
                 />
 
-                {canAssignResponsible ? (
+                {isCreator ? (
                   <select
                     id="edit-idResponsable"
                     name="idResponsable"
@@ -896,9 +895,9 @@ const formErrors =
                 )}
               </div>
 
-              {canAssignResponsible && (
+              {!isCreator && (
                 <small className="activity-field__help">
-                  Solo el creador puede cambiar 
+                  Solo el creador puede cambiar
                   al responsable.
                 </small>
               )}

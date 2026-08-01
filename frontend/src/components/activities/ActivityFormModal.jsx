@@ -39,7 +39,6 @@ function ActivityFormModal({
   onClose,
   onSubmit,
   users = [],
-  canAssignResponsible = false,
 }) {
   const [form, setForm] =
     useState(INITIAL_FORM);
@@ -167,9 +166,8 @@ function ActivityFormModal({
       titulo: form.titulo.trim(),
       descripcion:
         form.descripcion.trim(),
-      idResponsable: canAssignResponsible
-        ? form.idResponsable || null
-        : null,
+      idResponsable:
+        form.idResponsable || null,
       fechaLimite:
         form.fechaLimite,
       prioridad:
@@ -380,44 +378,27 @@ function ActivityFormModal({
                   aria-hidden="true"
                 />
 
-                {canAssignResponsible ? (
-                  <select
-                    id="idResponsable"
-                    name="idResponsable"
-                    value={form.idResponsable}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  >
-                    <option value="">
-                      Sin asignar
+                <select
+                  id="idResponsable"
+                  name="idResponsable"
+                  value={form.idResponsable}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                >
+                  <option value="">
+                    Sin asignar
+                  </option>
+
+                  {users.map((availableUser) => (
+                    <option
+                      key={availableUser.id}
+                      value={availableUser.id}
+                    >
+                      {availableUser.nombre}
                     </option>
-
-                    {users.map((availableUser) => (
-                      <option
-                        key={availableUser.id}
-                        value={availableUser.id}
-                      >
-                        {availableUser.nombre}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    id="idResponsable"
-                    type="text"
-                    value="Sin asignar"
-                    disabled
-                    aria-label="Solo un administrador puede asignar un responsable"
-                  />
-                )}
+                  ))}
+                </select>
               </div>
-
-              {canAssignResponsible && (
-                <small className="activity-field__help">
-                  Solo un administrador puede
-                  asignar responsables.
-                </small>
-              )}
             </div>
 
             <div className="activity-form__row">
