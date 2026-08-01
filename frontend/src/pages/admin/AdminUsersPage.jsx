@@ -28,12 +28,23 @@ import {
   updateAdminUserStatus,
 } from '../../services/adminUsers.service.js';
 
+import {
+  getActivities,
+  updateActivity,
+} from '../../services/activities.service.js';
+
 import AdminUserFormModal from '../../components/admin/AdminUserFormModal.jsx';
 import AdminUserEditModal from '../../components/admin/AdminUserEditModal.jsx';
 import AdminUserPasswordModal from '../../components/admin/AdminUserPasswordModal.jsx';
 import AdminUserStatusModal from '../../components/admin/AdminUserStatusModal.jsx';
+import DeadlinesPanel from '../../components/activities/DeadlinesPanel.jsx';
+import IndicatorsPanel from '../../components/activities/IndicatorsPanel.jsx';
+import ActivityEditModal from '../../components/activities/ActivityEditModal.jsx';
 
 import '../../styles/admin-users.css';
+import '../../styles/dashboard.css';
+import '../../styles/deadlines-panel.css';
+import '../../styles/indicators-panel.css';
 
 function formatDate(dateValue) {
   if (!dateValue) {
@@ -101,6 +112,11 @@ const [
   setSuccessMessage,
 ] = useState('');
 
+const [activities, setActivities] = useState([]);
+const [activitiesLoading, setActivitiesLoading] = useState(true);
+const [selectedActivity, setSelectedActivity] = useState(null);
+const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
   const loadUsers =
     useCallback(async () => {
       try {
@@ -134,26 +150,72 @@ const [
     loadUsers();
   }, [loadUsers]);
 
-  async function handleCreateUser(
-  userData,
-) {
-  setError('');
-  setSuccessMessage('');
+  useEffect(() => {
+    let mounted = true;
 
-  const result =
-    await createAdminUser(userData);
+    async function loadActivities() {
+      try {
+        setActivitiesLoading(true);
+        const result = await getActivities();
 
-  setUsers((currentUsers) => [
-    result.usuario,
-    ...currentUsers,
-  ]);
+        if (mounted) {
+          setActivities(
+            Array.isArray(result.actividades) ? result.actividades : [],
+          );
+        }
+      } catch (requestError) {
+        console.error('Error cargando actividades:', requestError);
+      } finally {
+        if (mounted) {
+          setActivitiesLoading(false);
+        }
+      }
+    }
 
-  setIsCreateModalOpen(false);
+    loadActivities();
 
-  setSuccessMessage(
-    `La cuenta de ${result.usuario.nombre} se creó correctamente.`,
-  );
-}
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function handleOpenEditModal(activity) {
+    setSelectedActivity(activity);
+    setIsEditModalOpen(true);
+  }
+
+  function handleCloseEditModal() {
+    setIsEditModalOpen(false);
+    setSelectedActivity(null);
+  }
+
+  async function handleUpdateActivity(activityId, activityData) {
+    const result = await updateActivity(activityId, activityData);
+    const savedActivity = result.actividad;
+
+    setActivities((currentActivities) =>
+      currentActivities.map((activity) =>
+        String(activity.id) === String(savedActivity.id)
+          ? {
+              ...activity,
+              titulo: savedActivity.titulo,
+              descripcion: savedActivity.descripcion || '',
+              fechaLimite:
+                typeof savedActivity.fechaLimite === 'string'
+                  ? savedActivity.fechaLimite.slice(0, 10)
+                  : savedActivity.fechaLimite,
+              prioridad: savedActivity.prioridad,
+              estatus: savedActivity.estatus,
+            }
+          : activity,
+      ),
+    );
+
+    handleCloseEditModal();
+    setSuccessMessage(result.message || 'Actividad actualizada correctamente.');
+
+    return result;
+  }
 
 async function handleCreateUser(
   userData,
@@ -406,6 +468,20 @@ async function handleResetPassword(
         >
             {successMessage}
         </div>
+        )}
+
+        {!activitiesLoading && (
+          <IndicatorsPanel
+            activities={activities}
+            currentUser={user}
+          />
+        )}
+
+        {!activitiesLoading && (
+          <DeadlinesPanel
+            activities={activities}
+            onEditActivity={handleOpenEditModal}
+          />
         )}
 
         <section
@@ -687,6 +763,16 @@ async function handleResetPassword(
     setPasswordUser(null)
   }
   onSubmit={handleResetPassword}
+/>
+
+<ActivityEditModal
+  isOpen={isEditModalOpen}
+  activity={selectedActivity}
+  currentUser={user}
+  onClose={handleCloseEditModal}
+  onSubmit={handleUpdateActivity}
+  users={[]}
+  canAssignResponsible={false}
 />
 
     </div>

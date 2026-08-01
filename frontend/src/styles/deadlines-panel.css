@@ -1,0 +1,147 @@
+
+/* =========================================
+   PANEL: VENCIDAS / PRÓXIMAS A VENCER (HU-13.07)
+========================================= */
+
+.deadlines-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  margin-bottom: 24px;
+  padding: 18px;
+
+  background: #ffffff;
+  border: 1px solid #f3c6c6;
+  border-radius: 16px;
+
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.05);
+}
+
+.deadlines-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  color: #b42318;
+}
+
+.deadlines-panel__header h2 {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.deadlines-panel__columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.deadlines-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deadlines-column__title {
+  font-size: 13px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.deadlines-column__title--overdue {
+  color: #b42318;
+}
+
+.deadlines-column__title--upcoming {
+  color: #b45309;
+}
+
+.deadlines-column__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.deadline-card {
+  display: flex;
+  flex-direction: column;
+
+  padding: 15px;
+
+  background: #ffffff;
+  border: 1px solid #dce5ef;
+  border-radius: 15px;
+
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.04);
+
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.deadline-card:hover {
+  border-color: #bdcadb;
+  transform: translateY(-2px);
+
+  box-shadow: 0 9px 20px rgba(15, 23, 42, 0.09);
+}
+
+.deadline-card--overdue {
+  border-color: #ffc5ca;
+  background: #fff8f8;
+}
+
+.deadline-card--upcoming {
+  border-color: #f8d276;
+  background: #fffbf0;
+}
+
+.deadline-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  flex-wrap: wrap;
+}
+
+.deadline-chip {
+  padding: 3px 9px;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  border-radius: 999px;
+}
+
+.deadline-chip--overdue {
+  color: #b42318;
+  background: #fff1f2;
+}
+
+.deadline-chip--upcoming {
+  color: #b45309;
+  background: #fff8e8;
+}
+
+.deadline-card h3 {
+  margin: 13px 0 14px;
+
+  color: #101828;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .deadlines-panel__columns {
+    grid-template-columns: 1fr;
+  }
+}
