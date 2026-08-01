@@ -627,6 +627,18 @@
   font-size: 13px;
 }
 
+.activity-card__person--creator {
+  margin-bottom: 6px;
+}
+
+.activity-card__person-label {
+  color: #9aa9c0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .activity-card__date,
 .activity-card__evidence {
   margin-top: 10px;
@@ -637,6 +649,11 @@
   height: 25px;
 
   font-size: 9px;
+}
+
+.activity-avatar--creator {
+  color: #5438f5;
+  background: #ece9fe;
 }
 
 .activity-card__evidence {

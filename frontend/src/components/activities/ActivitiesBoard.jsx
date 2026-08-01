@@ -143,6 +143,10 @@ export default function ActivitiesBoard({
                       activity.responsable ||
                       'Sin responsable';
 
+                    const creatorName =
+                      activity.creador ||
+                      'Sin creador';
+
                     const priority =
                       activity.prioridad ||
                       'MEDIA';
@@ -179,7 +183,27 @@ export default function ActivitiesBoard({
 
                         <h3>{activity.titulo}</h3>
 
+                        <div className="activity-card__person activity-card__person--creator">
+                          <span className="activity-card__person-label">
+                            Creador:
+                          </span>
+
+                          <span className="activity-avatar activity-avatar--creator">
+                            {getInitials(
+                              creatorName,
+                            )}
+                          </span>
+
+                          <span>
+                            {creatorName}
+                          </span>
+                        </div>
+
                         <div className="activity-card__person">
+                          <span className="activity-card__person-label">
+                            Responsable:
+                          </span>
+
                           <span className="activity-avatar">
                             {getInitials(
                               responsibleName,
