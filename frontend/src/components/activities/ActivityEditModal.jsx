@@ -136,6 +136,7 @@ export default function ActivityEditModal({
   onReviewEvidence,
   onResubmitEvidence,
   users = [],
+  canAssignResponsible = true,
 }) {
   
 const [form, setForm] = useState({
@@ -256,23 +257,19 @@ const canComment =
 useEffect(() => {
   let componentIsMounted = true;
 
-  if (!isOpen || !activity?.id) {
+  if (
+    !isOpen ||
+    !activity?.id ||
+    !canViewComments
+  ) {
     return undefined;
   }
 
   setComments([]);
   setNewComment('');
-  setCommentsError('');
-
-  if (!canViewComments) {
-  return undefined;
-}
-
 
   async function loadComments() {
     try {
-      setCommentsLoading(true);
-
       const result =
         await getActivityComments(
           activity.id,
@@ -287,14 +284,10 @@ useEffect(() => {
       }
     } catch (error) {
       if (componentIsMounted) {
-        setCommentsError(
+        setSubmitError(
           error.message ||
             'No fue posible cargar los comentarios.',
         );
-      }
-    } finally {
-      if (componentIsMounted) {
-        setCommentsLoading(false);
       }
     }
   }
@@ -657,7 +650,7 @@ const cleanData = {
   descripcion:
     form.descripcion.trim(),
 
-  ...(isCreator
+    ...(canManageResponsible
     ? {
         idResponsable:
           form.idResponsable || null,
@@ -1287,7 +1280,7 @@ const formErrors =
                   strokeWidth={1.7}
                 />
 
-                {isCreator ? (
+                {canManageResponsible ? (
                   <select
                     id="edit-idResponsable"
                     name="idResponsable"
@@ -1321,12 +1314,13 @@ const formErrors =
                 )}
               </div>
 
-              {!isCreator && (
-                <small className="activity-field__help">
-                  Solo el creador puede cambiar
-                  al responsable.
-                </small>
-              )}
+              {!canManageResponsible && (
+  <small className="activity-field__help">
+    {isCreator
+      ? 'No tienes permiso para cambiar al responsable.'
+      : 'Solo el creador puede cambiar al responsable.'}
+  </small>
+)}
             </div>
 
             <div className="activity-form__row">
