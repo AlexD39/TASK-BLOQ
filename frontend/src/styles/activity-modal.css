@@ -1096,3 +1096,68 @@
     width: 100%;
   }
 }
+
+/* =========================================================
+   AJUSTE FINAL DE COMENTARIOS
+========================================================= */
+
+.activity-comments__title {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+}
+
+.activity-comments__count {
+  margin-left: auto;
+}
+
+.activity-comments__error {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 11px;
+}
+
+.activity-comments__empty {
+  flex-direction: column;
+  min-height: 110px;
+  padding: 22px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.activity-comments__empty svg {
+  color: #94a3b8;
+}
+
+.activity-comments__notice {
+  padding: 12px 14px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+}
+
+.activity-comment__top time {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.activity-comments__form input {
+  min-width: 0;
+}
+
+.activity-comments__form button svg {
+  pointer-events: none;
+}
