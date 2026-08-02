@@ -1,5 +1,5 @@
-import 'dotenv/config';
-
+import dotenv from 'dotenv';
+import path from 'path';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -7,6 +7,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
+
+// Cargar .env asegurando la ruta absoluta del proceso
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const { Pool } = pg;
 
@@ -18,47 +21,46 @@ const requiredEnvironmentVariables = [
 
 for (const variable of requiredEnvironmentVariables) {
   if (!process.env[variable]) {
-    throw new Error(
-      `La variable ${variable} no está configurada.`,
-    );
+    console.error(`❌ Error de configuración: La variable '${variable}' no está definida en el archivo .env`);
+    process.exit(1);
   }
 }
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
-const accessTokenExpiration =
-  process.env.ACCESS_TOKEN_EXPIRES || '15m';
+const accessTokenExpiration = process.env.ACCESS_TOKEN_EXPIRES || '15m';
+const refreshTokenDays = Number(process.env.REFRESH_TOKEN_DAYS) || 7;
+const isProduction = process.env.NODE_ENV === 'production';
 
-const refreshTokenDays =
-  Number(process.env.REFRESH_TOKEN_DAYS) || 7;
-
-const isProduction =
-  process.env.NODE_ENV === 'production';
-
+// Configuración de la base de datos
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: isProduction ? { rejectUnauthorized: false } : false,
 });
 
 app.disable('x-powered-by');
 
+// Middlewares globales
 app.use(
   cors({
-    origin:
-      process.env.FRONTEND_URL ||
-      'http://localhost:5173',
-
+    origin: (origin, callback) => {
+      // Permite peticiones sin origen (como Postman/Health) o desde localhost
+      if (!origin || origin.startsWith('http://localhost:')) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   }),
 );
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 function hashToken(token) {
-  return createHash('sha256')
-    .update(token)
-    .digest('hex');
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function generateAccessToken(usuario) {
@@ -97,22 +99,13 @@ function generateRefreshToken(usuario) {
 }
 
 function setRefreshCookie(response, refreshToken) {
-  response.cookie(
-    'refreshToken',
-    refreshToken,
-    {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      path: '/api/auth',
-      maxAge:
-        refreshTokenDays *
-        24 *
-        60 *
-        60 *
-        1000,
-    },
-  );
+  response.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax',
+    path: '/api/auth',
+    maxAge: refreshTokenDays * 24 * 60 * 60 * 1000,
+  });
 }
 
 function clearRefreshCookie(response) {
@@ -124,16 +117,9 @@ function clearRefreshCookie(response) {
   });
 }
 
-function requireAccessToken(
-  request,
-  response,
-  next,
-) {
-  const authorization =
-    request.headers.authorization || '';
-
-  const [type, token] =
-    authorization.split(' ');
+function requireAccessToken(request, response, next) {
+  const authorization = request.headers.authorization || '';
+  const [type, token] = authorization.split(' ');
 
   if (type !== 'Bearer' || !token) {
     return response.status(401).json({
@@ -143,15 +129,11 @@ function requireAccessToken(
   }
 
   try {
-    const payload = jwt.verify(
-      token,
-      process.env.JWT_ACCESS_SECRET,
-      {
-        algorithms: ['HS256'],
-        issuer: 'task-bloq-api',
-        audience: 'task-bloq-web',
-      },
-    );
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'task-bloq-api',
+      audience: 'task-bloq-web',
+    });
 
     if (payload.tipo !== 'access') {
       return response.status(401).json({
@@ -170,8 +152,7 @@ function requireAccessToken(
   } catch {
     return response.status(401).json({
       ok: false,
-      message:
-        'Access token inválido o expirado.',
+      message: 'Access token inválido o expirado.',
     });
   }
 }
@@ -229,373 +210,52 @@ app.get('/api/health', async (_request, response) => {
    LOGIN
 ========================================= */
 
-app.post(
-  '/api/auth/login',
-  async (request, response) => {
-    try {
-      const correo =
-        typeof request.body?.correo === 'string'
-          ? request.body.correo
-              .trim()
-              .toLowerCase()
-          : '';
+app.post('/api/auth/login', async (request, response) => {
+  try {
+    const correo =
+      typeof request.body?.correo === 'string'
+        ? request.body.correo.trim().toLowerCase()
+        : '';
 
-      const contrasena =
-        typeof request.body?.contrasena ===
-        'string'
-          ? request.body.contrasena
-          : '';
+    const contrasena =
+      typeof request.body?.contrasena === 'string'
+        ? request.body.contrasena
+        : '';
 
-      const errors = {};
+    const errors = {};
 
-      if (!correo) {
-        errors.correo =
-          'El correo es obligatorio.';
-      } else if (
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-          correo,
-        )
-      ) {
-        errors.correo =
-          'Ingresa un correo válido.';
-      }
+    if (!correo) {
+      errors.correo = 'El correo es obligatorio.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+      errors.correo = 'Ingresa un correo válido.';
+    }
 
-      if (!contrasena) {
-        errors.contrasena =
-          'La contraseña es obligatoria.';
-      }
+    if (!contrasena) {
+      errors.contrasena = 'La contraseña es obligatoria.';
+    }
 
-      if (Object.keys(errors).length > 0) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Verifica los campos del formulario.',
-          errors,
-        });
-      }
-
-      const result = await pool.query(
-        `
-          SELECT
-            id_usuario,
-            nombre,
-            correo,
-            password_hash,
-            rol,
-            estado
-          FROM usuarios
-          WHERE LOWER(correo) = LOWER($1)
-          LIMIT 1
-        `,
-        [correo],
-      );
-
-      const usuario = result.rows[0];
-
-      if (!usuario) {
-        return response.status(401).json({
-          ok: false,
-          message:
-            'Correo o contraseña incorrectos.',
-        });
-      }
-
-      if (usuario.estado !== 'ACTIVO') {
-        return response.status(403).json({
-          ok: false,
-          message:
-            'La cuenta se encuentra inactiva.',
-        });
-      }
-
-      const passwordIsValid =
-        await bcrypt.compare(
-          contrasena,
-          usuario.password_hash,
-        );
-
-      if (!passwordIsValid) {
-        return response.status(401).json({
-          ok: false,
-          message:
-            'Correo o contraseña incorrectos.',
-        });
-      }
-
-      const accessToken =
-        generateAccessToken(usuario);
-
-      const refreshToken =
-        generateRefreshToken(usuario);
-
-      const refreshTokenHash =
-        hashToken(refreshToken);
-
-      await pool.query(
-        `
-          DELETE FROM refresh_tokens
-          WHERE id_usuario = $1
-            AND (
-              expira_en <= NOW()
-              OR revocado_en IS NOT NULL
-            )
-        `,
-        [usuario.id_usuario],
-      );
-
-      await pool.query(
-        `
-          INSERT INTO refresh_tokens (
-            id_usuario,
-            token_hash,
-            expira_en
-          )
-          VALUES (
-            $1,
-            $2,
-            NOW() + (
-              $3::INTEGER *
-              INTERVAL '1 day'
-            )
-          )
-        `,
-        [
-          usuario.id_usuario,
-          refreshTokenHash,
-          refreshTokenDays,
-        ],
-      );
-
-      setRefreshCookie(
-        response,
-        refreshToken,
-      );
-
-      return response.status(200).json({
-        ok: true,
-        message:
-          'Inicio de sesión correcto.',
-        accessToken,
-        expiresIn: accessTokenExpiration,
-        usuario: {
-          id: usuario.id_usuario,
-          nombre: usuario.nombre,
-          correo: usuario.correo,
-          rol: usuario.rol,
-        },
-      });
-    } catch (error) {
-      console.error(
-        'Error durante login:',
-        error,
-      );
-
-      return response.status(500).json({
+    if (Object.keys(errors).length > 0) {
+      return response.status(400).json({
         ok: false,
-        message:
-          'Ocurrió un error al iniciar sesión.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   REFRESH TOKEN
-========================================= */
-
-app.post(
-  '/api/auth/refresh',
-  async (request, response) => {
-    const refreshToken =
-      request.cookies.refreshToken;
-
-    if (!refreshToken) {
-      return response.status(401).json({
-        ok: false,
-        message: 'Refresh token requerido.',
+        message: 'Verifica los campos del formulario.',
+        errors,
       });
     }
 
-    try {
-      const payload = jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET,
-        {
-          algorithms: ['HS256'],
-          issuer: 'task-bloq-api',
-          audience: 'task-bloq-web',
-        },
-      );
-
-      if (payload.tipo !== 'refresh') {
-        return response.status(401).json({
-          ok: false,
-          message:
-            'Refresh token no válido.',
-        });
-      }
-
-      const refreshTokenHash =
-        hashToken(refreshToken);
-
-      const result = await pool.query(
-        `
-          SELECT
-            rt.id_refresh_token,
-            u.id_usuario,
-            u.nombre,
-            u.correo,
-            u.rol,
-            u.estado
-          FROM refresh_tokens rt
-          INNER JOIN usuarios u
-            ON u.id_usuario = rt.id_usuario
-          WHERE rt.token_hash = $1
-            AND rt.revocado_en IS NULL
-            AND rt.expira_en > NOW()
-          LIMIT 1
-        `,
-        [refreshTokenHash],
-      );
-
-      const session = result.rows[0];
-
-      if (
-        !session ||
-        session.id_usuario !==
-          Number(payload.sub)
-      ) {
-        clearRefreshCookie(response);
-
-        return response.status(401).json({
-          ok: false,
-          message:
-            'La sesión ya no es válida.',
-        });
-      }
-
-      if (session.estado !== 'ACTIVO') {
-        clearRefreshCookie(response);
-
-        return response.status(403).json({
-          ok: false,
-          message:
-            'La cuenta se encuentra inactiva.',
-        });
-      }
-
-      await pool.query(
-        `
-          UPDATE refresh_tokens
-          SET revocado_en = NOW()
-          WHERE id_refresh_token = $1
-        `,
-        [session.id_refresh_token],
-      );
-
-      const newAccessToken =
-        generateAccessToken(session);
-
-      const newRefreshToken =
-        generateRefreshToken(session);
-
-      await pool.query(
-        `
-          INSERT INTO refresh_tokens (
-            id_usuario,
-            token_hash,
-            expira_en
-          )
-          VALUES (
-            $1,
-            $2,
-            NOW() + (
-              $3::INTEGER *
-              INTERVAL '1 day'
-            )
-          )
-        `,
-        [
-          session.id_usuario,
-          hashToken(newRefreshToken),
-          refreshTokenDays,
-        ],
-      );
-
-      setRefreshCookie(
-        response,
-        newRefreshToken,
-      );
-
-      return response.status(200).json({
-        ok: true,
-        accessToken: newAccessToken,
-        expiresIn: accessTokenExpiration,
-      });
-    } catch {
-      clearRefreshCookie(response);
-
-      return response.status(401).json({
-        ok: false,
-        message:
-          'Refresh token inválido o expirado.',
-      });
-    }
-  },
-);
-
-/* =========================================
-   LOGOUT
-========================================= */
-
-app.post(
-  '/api/auth/logout',
-  async (request, response) => {
-    const refreshToken =
-      request.cookies.refreshToken;
-
-    if (refreshToken) {
-      await pool.query(
-        `
-          UPDATE refresh_tokens
-          SET revocado_en = NOW()
-          WHERE token_hash = $1
-        `,
-        [hashToken(refreshToken)],
-      );
-    }
-
-    clearRefreshCookie(response);
-
-    return response.status(200).json({
-      ok: true,
-      message: 'Sesión cerrada correctamente.',
-    });
-  },
-);
-
-/* =========================================
-   DASHBOARD PROTEGIDO
-========================================= */
-
-app.get(
-  '/api/dashboard',
-  requireAccessToken,
-  async (request, response) => {
     const result = await pool.query(
       `
         SELECT
           id_usuario,
           nombre,
           correo,
+          password_hash,
           rol,
           estado
         FROM usuarios
-        WHERE id_usuario = $1
-          AND estado = 'ACTIVO'
+        WHERE LOWER(correo) = LOWER($1)
         LIMIT 1
       `,
-      [request.auth.idUsuario],
+      [correo],
     );
 
     const usuario = result.rows[0];
@@ -603,25 +263,265 @@ app.get(
     if (!usuario) {
       return response.status(401).json({
         ok: false,
-        message: 'Usuario no disponible.',
+        message: 'Correo o contraseña incorrectos.',
       });
     }
 
+    if (usuario.estado !== 'ACTIVO') {
+      return response.status(403).json({
+        ok: false,
+        message: 'La cuenta se encuentra inactiva.',
+      });
+    }
+
+    const passwordIsValid = await bcrypt.compare(
+      contrasena,
+      usuario.password_hash,
+    );
+
+    if (!passwordIsValid) {
+      return response.status(401).json({
+        ok: false,
+        message: 'Correo o contraseña incorrectos.',
+      });
+    }
+
+    const accessToken = generateAccessToken(usuario);
+    const refreshToken = generateRefreshToken(usuario);
+    const refreshTokenHash = hashToken(refreshToken);
+
+    await pool.query(
+      `
+        DELETE FROM refresh_tokens
+        WHERE id_usuario = $1
+          AND (
+            expira_en <= NOW()
+            OR revocado_en IS NOT NULL
+          )
+      `,
+      [usuario.id_usuario],
+    );
+
+    await pool.query(
+      `
+        INSERT INTO refresh_tokens (
+          id_usuario,
+          token_hash,
+          expira_en
+        )
+        VALUES (
+          $1,
+          $2,
+          NOW() + ($3::INTEGER * INTERVAL '1 day')
+        )
+      `,
+      [usuario.id_usuario, refreshTokenHash, refreshTokenDays],
+    );
+
+    setRefreshCookie(response, refreshToken);
+
     return response.status(200).json({
       ok: true,
-      message:
-        'Bienvenido al dashboard general.',
-      usuario,
-      indicadores: {
-        actividadesTotales: 0,
-        pendientes: 0,
-        enProceso: 0,
-        enRevision: 0,
-        completadas: 0,
+      message: 'Inicio de sesión correcto.',
+      accessToken,
+      expiresIn: accessTokenExpiration,
+      usuario: {
+        id: usuario.id_usuario,
+        nombre: usuario.nombre,
+        correo: usuario.correo,
+        rol: usuario.rol,
       },
     });
-  },
-);
+  } catch (error) {
+    console.error('Error durante login:', error);
+    return response.status(500).json({
+      ok: false,
+      message: 'Ocurrió un error al iniciar sesión.',
+    });
+  }
+});
+
+/* =========================================
+   REFRESH TOKEN
+========================================= */
+
+app.post('/api/auth/refresh', async (request, response) => {
+  const refreshToken = request.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return response.status(401).json({
+      ok: false,
+      message: 'Refresh token requerido.',
+    });
+  }
+
+  try {
+    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'task-bloq-api',
+      audience: 'task-bloq-web',
+    });
+
+    if (payload.tipo !== 'refresh') {
+      return response.status(401).json({
+        ok: false,
+        message: 'Refresh token no válido.',
+      });
+    }
+
+    const refreshTokenHash = hashToken(refreshToken);
+
+    const result = await pool.query(
+      `
+       SELECT
+  rt.id_refresh_token,
+  u.id_usuario,
+  u.nombre,
+  u.correo,
+  u.rol,
+  u.estado
+FROM refresh_tokens rt
+INNER JOIN usuarios u
+  ON u.id_usuario = rt.id_usuario
+WHERE rt.token_hash = $1
+  AND rt.revocado_en IS NULL
+  AND rt.expira_en > NOW()
+LIMIT 1
+      `,
+      [refreshTokenHash],
+    );
+
+    const session = result.rows[0];
+
+    if (!session || session.id_usuario !== Number(payload.sub)) {
+      clearRefreshCookie(response);
+      return response.status(401).json({
+        ok: false,
+        message: 'La sesión ya no es válida.',
+      });
+    }
+
+    if (session.estado !== 'ACTIVO') {
+  clearRefreshCookie(response);
+  return response.status(403).json({
+    ok: false,
+    message: 'La cuenta se encuentra inactiva.',
+  });
+}
+
+    await pool.query(
+      `
+        UPDATE refresh_tokens
+        SET revocado_en = NOW()
+        WHERE id_refresh_token = $1
+      `,
+      [session.id_refresh_token],
+    );
+
+    const newAccessToken = generateAccessToken(session);
+    const newRefreshToken = generateRefreshToken(session);
+
+    await pool.query(
+      `
+        INSERT INTO refresh_tokens (
+          id_usuario,
+          token_hash,
+          expira_en
+        )
+        VALUES (
+          $1,
+          $2,
+          NOW() + ($3::INTEGER * INTERVAL '1 day')
+        )
+      `,
+      [session.id_usuario, hashToken(newRefreshToken), refreshTokenDays],
+    );
+
+    setRefreshCookie(response, newRefreshToken);
+
+    return response.status(200).json({
+      ok: true,
+      accessToken: newAccessToken,
+      expiresIn: accessTokenExpiration,
+    });
+  } catch {
+    clearRefreshCookie(response);
+    return response.status(401).json({
+      ok: false,
+      message: 'Refresh token inválido o expirado.',
+    });
+  }
+});
+
+/* =========================================
+   LOGOUT
+========================================= */
+
+app.post('/api/auth/logout', async (request, response) => {
+  const refreshToken = request.cookies.refreshToken;
+
+  if (refreshToken) {
+    await pool.query(
+      `
+        UPDATE refresh_tokens
+        SET revocado_en = NOW()
+        WHERE token_hash = $1
+      `,
+      [hashToken(refreshToken)],
+    );
+  }
+
+  clearRefreshCookie(response);
+
+  return response.status(200).json({
+    ok: true,
+    message: 'Sesión cerrada correctamente.',
+  });
+});
+
+/* =========================================
+   DASHBOARD PROTEGIDO
+========================================= */
+
+app.get('/api/dashboard', requireAccessToken, async (request, response) => {
+  const result = await pool.query(
+    `
+      SELECT
+        id_usuario,
+        nombre,
+        correo,
+        rol,
+        estado
+      FROM usuarios
+      WHERE id_usuario = $1
+        AND estado = 'ACTIVO'
+      LIMIT 1
+    `,
+    [request.auth.idUsuario],
+  );
+
+  const usuario = result.rows[0];
+
+  if (!usuario) {
+    return response.status(401).json({
+      ok: false,
+      message: 'Usuario no disponible.',
+    });
+  }
+
+  return response.status(200).json({
+    ok: true,
+    message: 'Bienvenido al dashboard general.',
+    usuario,
+    indicadores: {
+      actividadesTotales: 0,
+      pendientes: 0,
+      enProceso: 0,
+      enRevision: 0,
+      completadas: 0,
+    },
+  });
+});
 
 /* =========================================
    LISTAR USUARIOS (RESPONSABLES DISPONIBLES)
@@ -681,8 +581,7 @@ app.get(
           correo,
           rol,
           estado,
-          creado_en AS "creadoEn",
-          actualizado_en AS "actualizadoEn"
+          creado_en AS "creadoEn"
         FROM usuarios
         ORDER BY
           creado_en DESC,
@@ -866,22 +765,22 @@ app.patch(
 
         const result = await client.query(
           `
-            UPDATE usuarios
-            SET
-              nombre = $1,
-              correo = $2,
-              rol = $3
-            WHERE id_usuario = $4
-            RETURNING
-              id_usuario AS id,
-              nombre,
-              correo,
-              rol,
-              estado,
-              creado_en AS "creadoEn",
-              actualizado_en AS "actualizadoEn"
-          `,
-          [
+          UPDATE usuarios
+          SET
+            nombre = $1,
+            correo = $2,
+            rol = $3
+          WHERE id_usuario = $4
+          RETURNING
+            id_usuario AS id,
+            nombre,
+            correo,
+            rol,
+            estado,
+            creado_en AS "creadoEn",
+            actualizado_en AS "actualizadoEn"
+        `,
+        [
             nombre,
             correo,
             rol,
@@ -969,13 +868,13 @@ app.patch(
               .toUpperCase()
           : '';
 
-      const estadosPermitidos = [
+      const estadoPermitidos = [
         'ACTIVO',
         'INACTIVO',
       ];
 
       if (
-        !estadosPermitidos.includes(estado)
+        !estadoPermitidos.includes(estado)
       ) {
         return response.status(400).json({
           ok: false,
@@ -983,7 +882,7 @@ app.patch(
             'El estado debe ser ACTIVO o INACTIVO.',
           errors: {
             estado:
-              'Selecciona un estado válido.',
+              'Selecciona udo válido.',
           },
         });
       }
@@ -1062,17 +961,19 @@ app.patch(
         const result = await client.query(
           `
             UPDATE usuarios
-            SET estado = $1
-            WHERE id_usuario = $2
-            RETURNING
-              id_usuario AS id,
-              nombre,
-              correo,
-              rol,
-              estado,
-              creado_en AS "creadoEn",
-              actualizado_en AS "actualizadoEn"
-          `,
+  SET
+    nombre = $1,
+    correo = $2,
+    rol = $3
+  WHERE id_usuario = $4
+  RETURNING
+    id_usuario AS id,
+    nombre,
+    correo,
+    rol,
+    estado,
+    creado_en AS "creadoEn"
+`,
           [
             estado,
             idUsuario,
@@ -1262,7 +1163,7 @@ app.patch(
             correo:
               existingUser.correo,
             estado:
-              existingUser.estado,
+              existingUsedo,
           },
         });
       } catch (error) {
@@ -1427,8 +1328,7 @@ app.post(
             correo,
             rol,
             estado,
-            creado_en AS "creadoEn",
-            actualizado_en AS "actualizadoEn"
+            creado_en AS "creadoEn"
         `,
         [
           nombre,
@@ -1475,873 +1375,654 @@ app.post(
    REGISTRAR ACTIVIDAD
 ========================================= */
 
-app.post(
-  '/api/activities',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const titulo =
-        typeof request.body?.titulo === 'string'
-          ? request.body.titulo.trim()
-          : '';
+app.post('/api/activities', requireAccessToken, async (request, response) => {
+  try {
+    const titulo =
+      typeof request.body?.titulo === 'string'
+        ? request.body.titulo.trim()
+        : '';
 
-      const descripcion =
-        typeof request.body?.descripcion === 'string'
-          ? request.body.descripcion.trim()
-          : '';
+    const descripcion =
+      typeof request.body?.descripcion === 'string'
+        ? request.body.descripcion.trim()
+        : '';
 
-      const responsableRecibido =
-  request.body?.idResponsable;
+    const responsableRecibido = request.body?.idResponsable;
 
-const idResponsable =
-  responsableRecibido === null ||
-  responsableRecibido === undefined ||
-  responsableRecibido === ''
-    ? null
-    : Number(responsableRecibido);
+    const idResponsable =
+      responsableRecibido === null ||
+      responsableRecibido === undefined ||
+      responsableRecibido === ''
+        ? null
+        : Number(responsableRecibido);
 
-      const fechaLimite =
-        typeof request.body?.fechaLimite === 'string'
-          ? request.body.fechaLimite.trim()
-          : '';
+    const fechaLimite =
+      typeof request.body?.fechaLimite === 'string'
+        ? request.body.fechaLimite.trim()
+        : '';
 
-      const prioridad =
-        typeof request.body?.prioridad === 'string'
-          ? request.body.prioridad
-              .trim()
-              .toUpperCase()
-          : '';
+    const prioridad =
+      typeof request.body?.prioridad === 'string'
+        ? request.body.prioridad.trim().toUpperCase()
+        : '';
 
-      const estatus = 'PENDIENTE';
+    const estado =
+      typeof request.body?.estado === 'string'
+        ? request.body.estado.trim().toUpperCase()
+        : 'PENDIENTE';
 
-      const errors = {};
+    const errors = {};
 
-      if (!titulo) {
-        errors.titulo =
-          'El título es obligatorio.';
-      }
+    if (!titulo) {
+      errors.titulo = 'El título es obligatorio.';
+    }
 
-      if (
-  idResponsable !== null &&
-  (
-    !Number.isInteger(idResponsable) ||
-    idResponsable <= 0
-  )
-) {
-  errors.idResponsable =
-    'Selecciona un responsable válido.';
-}    
+    if (
+      idResponsable !== null &&
+      (!Number.isInteger(idResponsable) || idResponsable <= 0)
+    ) {
+      errors.idResponsable = 'Selecciona un responsable válido.';
+    }
 
-      if (!fechaLimite) {
-        errors.fechaLimite =
-          'La fecha límite es obligatoria.';
-      }
+    if (!fechaLimite) {
+      errors.fechaLimite = 'La fecha límite es obligatoria.';
+    }
 
-      const prioridadesPermitidas = [
-        'ALTA',
-        'MEDIA',
-        'BAJA',
-      ];
+    const prioridadesPermitidas = ['ALTA', 'MEDIA', 'BAJA'];
+    if (!prioridadesPermitidas.includes(prioridad)) {
+      errors.prioridad = 'La prioridad debe ser ALTA, MEDIA o BAJA.';
+    }
 
-      if (
-        !prioridadesPermitidas.includes(
-          prioridad,
-        )
-      ) {
-        errors.prioridad =
-          'La prioridad debe ser ALTA, MEDIA o BAJA.';
-      }
+    const estadoPermitidos = ['PENDIENTE', 'EN_PROCESO', 'EN_REVISION', 'COMPLETADA'];
+    if (!estadoPermitidos.includes(estado)) {
+      errors.estado = 'El estado seleccionado no es válido.';
+    }
 
-      const estatusPermitidos = [
-        'PENDIENTE',
-        'EN_PROCESO',
-        'EN_REVISION',
-        'COMPLETADA',
-      ];
+    if (Object.keys(errors).length > 0) {
+      return response.status(400).json({
+        ok: false,
+        message: 'Verifica los campos de la actividad.',
+        errors,
+      });
+    }
 
-      if (!estatusPermitidos.includes(estatus)) {
-        errors.estatus =
-          'El estatus seleccionado no es válido.';
-      }
+    let responsable = null;
 
-      if (Object.keys(errors).length > 0) {
+    if (idResponsable !== null) {
+      const responsableResult = await pool.query(
+        `
+          SELECT
+            id_usuario,
+            nombre,
+            correo
+          FROM usuarios
+          WHERE id_usuario = $1
+            AND estado = 'ACTIVO'
+          LIMIT 1
+        `,
+        [idResponsable],
+      );
+
+      responsable = responsableResult.rows[0];
+
+      if (!responsable) {
         return response.status(400).json({
           ok: false,
-          message:
-            'Verifica los campos de la actividad.',
-          errors,
+          message: 'El responsable seleccionado no existe o está inactivo.',
         });
       }
+    }
 
-      let responsable = null;
-
-if (idResponsable !== null) {
-  const responsableResult =
-    await pool.query(
+    const result = await pool.query(
       `
-        SELECT
-          id_usuario,
-          nombre,
-          correo
-        FROM usuarios
-        WHERE id_usuario = $1
-          AND estado = 'ACTIVO'
-        LIMIT 1
-      `,
-      [idResponsable],
-    );
-
-  responsable = responsableResult.rows[0];
-
-  if (!responsable) {
-    return response.status(400).json({
-      ok: false,
-      message:
-        'El responsable seleccionado no existe o está inactivo.',
-    });
-  }
-}
-
-      const result = await pool.query(
-        `
-          INSERT INTO actividades (
-            titulo,
-            descripcion,
-            id_creador,
-            id_responsable,
-            fecha_limite,
-            estatus,
-            prioridad
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7
-          )
-          RETURNING
-            id_actividad,
-            titulo,
-            descripcion,
-            id_creador,
-            id_responsable,
-            fecha_limite,
-            estatus,
-            prioridad,
-            creado_en,
-            actualizado_en
-        `,
-        [
+    
+    INSERT INTO actividades (
           titulo,
-          descripcion || null,
-          request.auth.idUsuario,
-          idResponsable,
-          fechaLimite,
+          descripcion,
+          id_creador,
+          id_responsable,
+          fecha_limite,
+          estatus,
+          prioridad
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7
+        )
+        RETURNING
+          id_actividad,
+          titulo,
+          descripcion,
+          id_creador,
+          id_responsable,
+          fecha_limite,
           estatus,
           prioridad,
-        ],
-      );
+          creado_en
+      `,
+      [
+        titulo,
+        descripcion || null,
+        request.auth.idUsuario,
+        idResponsable,
+        fechaLimite,
+        estado,
+        prioridad,
+      ],
+    );
 
-      return response.status(201).json({
-        ok: true,
-        message:
-          'Actividad registrada correctamente.',
-        actividad: {
-          ...result.rows[0],
-          responsable: responsable
-  ? {
-      id: responsable.id_usuario,
-      nombre: responsable.nombre,
-      correo: responsable.correo,
-    }
-  : null,
-        },
-      });
-    } catch (error) {
-      console.error(
-        'Error registrando actividad:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'Ocurrió un error al registrar la actividad.',
-      });
-    }
-  },
-);
+    return response.status(201).json({
+      ok: true,
+      message: 'Actividad registrada correctamente.',
+      actividad: {
+        ...result.rows[0],
+        responsable: responsable
+          ? {
+              id: responsable.id_usuario,
+              nombre: responsable.nombre,
+              correo: responsable.correo,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    console.error('Error registrando actividad:', error);
+    return response.status(500).json({
+      ok: false,
+      message: 'Ocurrió un error al registrar la actividad.',
+    });
+  }
+});
 
 /* =========================================
    LISTAR ACTIVIDADES
 ========================================= */
 
-app.get(
-  '/api/activities',
-  requireAccessToken,
-  async (_request, response) => {
-    try {
-      const result = await pool.query(`
-        SELECT
-          a.id_actividad AS id,
-          a.titulo,
-          COALESCE(a.descripcion, '') AS descripcion,
-          a.fecha_limite AS "fechaLimite",
-          a.estatus,
-          a.prioridad,
-          a.creado_en AS "creadoEn",
+app.get('/api/activities', requireAccessToken, async (_request, response) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        a.id_actividad AS id,
+        a.titulo,
+        COALESCE(a.descripcion, '') AS descripcion,
+        a.fecha_limite AS "fechaLimite",
+        a.estatus,
+        a.prioridad,
+        a.creado_en AS "creadoEn",
+        a.id_creador AS "idCreador",
+        a.id_responsable AS "idResponsable",
+        creador.nombre AS creador,
+        responsable.nombre AS responsable,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', c.id_comentario,
+                'comentario', c.comentario,
+                'creadoEn', c.creado_en,
+                'usuario', u.nombre
+              )
+              ORDER BY c.creado_en
+            )
+            FROM comentarios c
+            INNER JOIN usuarios u
+              ON u.id_usuario = c.id_usuario
+            WHERE c.id_actividad = a.id_actividad
+          ),
+          '[]'::json
+        ) AS "comentariosDetalle",
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', e.id_evidencia,
+                'enlace', e.enlace,
+                'descripcion', COALESCE(e.descripcion, ''),
+                'tipoArchivo', e.tipo_archivo
+              )
+              ORDER BY e.id_evidencia
+            )
+            FROM evidencias e
+            WHERE e.id_actividad = a.id_actividad
+          ),
+          '[]'::json
+        ) AS evidencias
+      FROM actividades a
+      INNER JOIN usuarios creador
+        ON creador.id_usuario = a.id_creador
+      LEFT JOIN usuarios responsable
+        ON responsable.id_usuario = a.id_responsable
+      ORDER BY
+        a.creado_en DESC,
+        a.id_actividad DESC
+    `);
 
-          a.id_creador AS "idCreador",
-          creador.nombre AS creador,
-
-          a.id_responsable AS "idResponsable",
-          responsable.nombre AS responsable,
-
-          COALESCE(
-  (
-    SELECT json_agg(
-      json_build_object(
-        'id', c.id_comentario,
-        'comentario', c.comentario,
-        'creadoEn', c.creado_en,
-        'usuario', u.nombre
-      )
-      ORDER BY c.creado_en
-    )
-    FROM comentarios c
-    INNER JOIN usuarios u
-      ON u.id_usuario = c.id_usuario
-    WHERE c.id_actividad =
-      a.id_actividad
-  ),
-  '[]'::json
-) AS "comentariosDetalle",
-
-          COALESCE(
-  (
-    SELECT json_agg(
-      json_build_object(
-        'id', e.id_evidencia,
-        'enlace', e.enlace,
-        'descripcion', e.descripcion,
-        'estado', e.estado
-      )
-      ORDER BY e.id_evidencia
-    )
-    FROM evidencias e
-    WHERE e.id_actividad = a.id_actividad
-  ),
-  '[]'::json
-) AS evidencias
-
-        FROM actividades a
-
-        INNER JOIN usuarios creador
-          ON creador.id_usuario = a.id_creador
-
-        LEFT JOIN usuarios responsable
-          ON responsable.id_usuario = a.id_responsable
-
-        ORDER BY
-          a.creado_en DESC,
-          a.id_actividad DESC
-      `);
-
-      return response.status(200).json({
-        ok: true,
-        actividades: result.rows,
-      });
-    } catch (error) {
-      console.error(
-        'Error consultando actividades:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible consultar las actividades.',
-      });
-    }
-  },
-);
+    return response.status(200).json({
+      ok: true,
+      actividades: result.rows,
+    });
+   
+  } catch (error) {
+    console.error('Error consultando actividades:', error);
+    return response.status(500).json({
+      ok: false,
+      message: 'No fue posible consultar las actividades.',
+    });
+  }
+});
 
 /* =========================================
    ACTUALIZAR ACTIVIDAD
 ========================================= */
 
-app.patch(
-  '/api/activities/:id',
-  requireAccessToken,
-  async (request, response) => {
-    try {
-      const idActividad = Number(
-        request.params.id,
-      );
+app.patch('/api/activities/:id', requireAccessToken, async (request, response) => {
+  try {
+    const idActividad = Number(request.params.id);
 
-      if (
-        !Number.isInteger(idActividad) ||
-        idActividad <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El identificador de la actividad no es válido.',
-        });
-      }
-
-      const titulo =
-        typeof request.body?.titulo === 'string'
-          ? request.body.titulo.trim()
-          : '';
-
-      const descripcion =
-        typeof request.body?.descripcion === 'string'
-          ? request.body.descripcion.trim()
-          : '';
-
-      const responsableProvisto =
-        Object.prototype.hasOwnProperty.call(
-          request.body || {},
-          'idResponsable',
-        );
-
-      const responsableRecibido =
-        request.body?.idResponsable;
-
-      const idResponsable =
-        responsableRecibido === null ||
-        responsableRecibido === undefined ||
-        responsableRecibido === ''
-          ? null
-          : Number(responsableRecibido);
-
-      const fechaLimite =
-        typeof request.body?.fechaLimite === 'string'
-          ? request.body.fechaLimite.trim()
-          : '';
-
-      const prioridad =
-        typeof request.body?.prioridad === 'string'
-          ? request.body.prioridad
-              .trim()
-              .toUpperCase()
-          : '';
-
-      const estatus =
-        typeof request.body?.estatus === 'string'
-          ? request.body.estatus
-              .trim()
-              .toUpperCase()
-          : '';
-
-      const evidenciasRecibidas =
-  Array.isArray(request.body?.evidencias)
-    ? request.body.evidencias
-    : [];
-
-const evidencias = evidenciasRecibidas
-  .filter(
-    (evidencia) =>
-      typeof evidencia === 'string',
-  )
-  .map((evidencia) =>
-    evidencia.trim(),
-  )
-  .filter(Boolean);
-
-      const errors = {};
-    
-if (evidencias.length > 20) {
-  errors.evidencias =
-    'Solo puedes agregar hasta 20 evidencias.';
-}
-
-const evidenciaInvalida =
-  evidencias.find((enlace) => {
-    try {
-      const url = new URL(enlace);
-
-      return ![
-        'http:',
-        'https:',
-      ].includes(url.protocol);
-    } catch {
-      return true;
+    if (!Number.isInteger(idActividad) || idActividad <= 0) {
+      return response.status(400).json({
+        ok: false,
+        message: 'El identificador de la actividad no es válido.',
+      });
     }
-  });
 
-if (evidenciaInvalida) {
-  errors.evidencias =
-    'Todas las evidencias deben contener un enlace válido.';
-}
+    const titulo =
+      typeof request.body?.titulo === 'string'
+        ? request.body.titulo.trim()
+        : '';
 
-      if (!titulo) {
-        errors.titulo =
-          'El título es obligatorio.';
-      } else if (titulo.length > 180) {
-        errors.titulo =
-          'El título no puede superar 180 caracteres.';
-      }
+    const descripcion =
+      typeof request.body?.descripcion === 'string'
+        ? request.body.descripcion.trim()
+        : '';
 
-      if (
-        responsableProvisto &&
-        idResponsable !== null &&
-        (
-          !Number.isInteger(idResponsable) ||
-          idResponsable <= 0
-        )
-      ) {
-        errors.idResponsable =
-          'Selecciona un responsable válido.';
-      }
-
-      if (!fechaLimite) {
-        errors.fechaLimite =
-          'La fecha límite es obligatoria.';
-      }
-
-      const prioridadesPermitidas = [
-        'ALTA',
-        'MEDIA',
-        'BAJA',
-      ];
-
-      if (
-        !prioridadesPermitidas.includes(
-          prioridad,
-        )
-      ) {
-        errors.prioridad =
-          'La prioridad seleccionada no es válida.';
-      }
-
-      const estatusPermitidos = [
-  'PENDIENTE',
-  'EN_PROCESO',
-  'EN_REVISION',
-  'COMPLETADA',
-];
-
-if (
-  !estatusPermitidos.includes(estatus)
-) {
-  errors.estatus =
-    'El estatus seleccionado no es válido.';
-}
-
-      if (Object.keys(errors).length > 0) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'Verifica los datos de la actividad.',
-          errors,
-        });
-      }
-
-const existingResult = await pool.query(
-  `
-    SELECT
-      id_actividad,
-      titulo,
-      descripcion,
-      id_creador,
-      id_responsable,
-      fecha_limite::text AS fecha_limite,
-      prioridad,
-      estatus
-    FROM actividades
-    WHERE id_actividad = $1
-    LIMIT 1
-  `,
-  [idActividad],
-);
-
-
-      const existingActivity =
-        existingResult.rows[0];
-
-      if (!existingActivity) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
-      }
-
-      const isCreator =
-  Number(existingActivity.id_creador) ===
-  request.auth.idUsuario;
-
-const isResponsible =
-  Number(existingActivity.id_responsable) ===
-  request.auth.idUsuario;
-
-const isAdmin =
-  request.auth.rol === 'ADMIN';
-
-if (
-  !isCreator &&
-  !isResponsible
-) {
-  return response.status(403).json({
-    ok: false,
-    message:
-      'No participas en esta actividad.',
-  });
-}
-
-const estatusActual =
-  existingActivity.estatus;
-
-const cambioEstatus =
-  estatus !== estatusActual;
-
-if (cambioEstatus) {
-  const responsablePuedeIniciar =
-    isResponsible &&
-    estatusActual === 'PENDIENTE' &&
-    estatus === 'EN_PROCESO';
-
-  const responsablePuedeEnviarRevision =
-    isResponsible &&
-    estatusActual === 'EN_PROCESO' &&
-    estatus === 'EN_REVISION';
-
-  const creadorPuedeCompletar =
-    isCreator &&
-    estatusActual === 'EN_REVISION' &&
-    estatus === 'COMPLETADA';
-
-  const creadorPuedeDevolver =
-    isCreator &&
-    estatusActual === 'EN_REVISION' &&
-    estatus === 'EN_PROCESO';
-
-  const transicionPermitida =
-    responsablePuedeIniciar ||
-    responsablePuedeEnviarRevision ||
-    creadorPuedeCompletar ||
-    creadorPuedeDevolver;
-
-  if (!transicionPermitida) {
-    return response.status(400).json({
-      ok: false,
-      message:
-        `No está permitido cambiar de ${estatusActual} a ${estatus}.`,
-    });
-  }
-
-  if (
-    responsablePuedeEnviarRevision &&
-    evidencias.length === 0
-  ) {
-    return response.status(400).json({
-      ok: false,
-      message:
-        'Debes registrar al menos una evidencia antes de enviar la actividad a revisión.',
-    });
-  }
-}
-
-const datosGeneralesCambiaron =
-  titulo !== existingActivity.titulo ||
-  descripcion !==
-    (existingActivity.descripcion || '') ||
-  fechaLimite !==
-    existingActivity.fecha_limite ||
-  prioridad !==
-    existingActivity.prioridad;
-
-if (
-  datosGeneralesCambiaron &&
-  !isCreator
-) {
-  return response.status(403).json({
-    ok: false,
-    message:
-      'El responsable solo puede administrar evidencias y cambiar el estatus permitido.',
-  });
-}
-
-
-      if (
-  responsableProvisto &&
-  !isCreator
-) {
-  return response.status(403).json({
-    ok: false,
-    message:
-      'Solo el creador puede asignar o cambiar al responsable.',
-  });
-}
-
-      let idResponsableFinal =
-        existingActivity.id_responsable ??
-        null;
-
-      if (responsableProvisto) {
-        if (idResponsable !== null) {
-          const responsableResult =
-            await pool.query(
-              `
-                SELECT id_usuario
-                FROM usuarios
-                WHERE id_usuario = $1
-                  AND estado = 'ACTIVO'
-                LIMIT 1
-              `,
-              [idResponsable],
-            );
-
-          if (!responsableResult.rows[0]) {
-            return response.status(400).json({
-              ok: false,
-              message:
-                'El responsable seleccionado no existe o está inactivo.',
-            });
-          }
-        }
-
-        idResponsableFinal = idResponsable;
-      }
-
-      const client = await pool.connect();
-
-try {
-  await client.query('BEGIN');
-
-  const result = await client.query(
-    `
-      WITH actividad_actualizada AS (
-        UPDATE actividades
-        SET
-          titulo = $1,
-          descripcion = $2,
-          fecha_limite = $3,
-          prioridad = $4,
-          estatus = $5,
-          id_responsable = $6
-        WHERE id_actividad = $7
-        RETURNING *
-      )
-      SELECT
-        a.id_actividad AS id,
-        a.titulo,
-        COALESCE(
-          a.descripcion,
-          ''
-        ) AS descripcion,
-        a.id_creador AS "idCreador",
-        a.id_responsable AS "idResponsable",
-        a.fecha_limite AS "fechaLimite",
-        a.estatus,
-        a.prioridad,
-        a.creado_en AS "creadoEn",
-        a.actualizado_en AS "actualizadoEn",
-
-        responsable.nombre AS responsable
-
-      FROM actividad_actualizada a
-
-      LEFT JOIN usuarios responsable
-        ON responsable.id_usuario =
-          a.id_responsable
-    `,
-    [
-      titulo,
-      descripcion || null,
-      fechaLimite,
-      prioridad,
-      estatus,
-      idResponsableFinal,
-      idActividad,
-    ],
-  );
-
-  await client.query(
-    `
-      DELETE FROM evidencias
-      WHERE id_actividad = $1
-    `,
-    [idActividad],
-  );
-
-  for (const enlace of evidencias) {
-    await client.query(
-      `
-        INSERT INTO evidencias (
-          id_actividad,
-          id_usuario_envia,
-          enlace
-        )
-        VALUES ($1, $2, $3)
-      `,
-      [
-        idActividad,
-        request.auth.idUsuario,
-        enlace,
-      ],
+    const responsableProvisto = Object.prototype.hasOwnProperty.call(
+      request.body || {},
+      'idResponsable',
     );
-  }
 
-  const evidenciasResult =
-    await client.query(
+    const responsableRecibido = request.body?.idResponsable;
+
+    const idResponsable =
+      responsableRecibido === null ||
+      responsableRecibido === undefined ||
+      responsableRecibido === ''
+        ? null
+        : Number(responsableRecibido);
+
+    const fechaLimite =
+      typeof request.body?.fechaLimite === 'string'
+        ? request.body.fechaLimite.trim()
+        : '';
+
+    const prioridad =
+      typeof request.body?.prioridad === 'string'
+        ? request.body.prioridad.trim().toUpperCase()
+        : '';
+
+    const estatus =
+      typeof request.body?.estatus === 'string'
+        ? request.body.estatus.trim().toUpperCase()
+        : '';
+
+    // Limpieza de evidencias y fotos (soporta Strings, Objetos con .enlace y fotos Base64)
+    const evidenciasRecibidas = Array.isArray(request.body?.evidencias)
+      ? request.body.evidencias
+      : [];
+
+    const evidencias = evidenciasRecibidas
+      .map((evidencia) => {
+        if (typeof evidencia === 'string') return evidencia.trim();
+        if (typeof evidencia === 'object' && evidencia !== null && evidencia.enlace) {
+          return String(evidencia.enlace).trim();
+        }
+        return '';
+      })
+      .filter((e) => e.length > 0); // Remueve strings vacíos ("") para evitar falsos errores de URL
+
+    const errors = {};
+
+    if (evidencias.length > 20) {
+      errors.evidencias = 'Solo puedes agregar hasta 20 evidencias o fotos.';
+    }
+
+    // Valida si es una URL con protocolo http/https O si es una foto subida localmente en formato data URI (base64)
+    const evidenciaInvalida = evidencias.find((enlace) => {
+      if (typeof enlace === 'string' && enlace.startsWith('data:image/')) {
+        return false; // Es una imagen/foto válida
+      }
+      try {
+        const url = new URL(enlace);
+        return !['http:', 'https:'].includes(url.protocol);
+      } catch {
+        return true;
+      }
+    });
+
+    if (evidenciaInvalida) {
+      errors.evidencias = 'Todas las evidencias deben ser enlaces válidos (ej: https://...) o fotos.';
+    }
+
+    if (!titulo) {
+      errors.titulo = 'El título es obligatorio.';
+    } else if (titulo.length > 180) {
+      errors.titulo = 'El título no puede superar 180 caracteres.';
+    }
+
+    if (
+      responsableProvisto &&
+      idResponsable !== null &&
+      (!Number.isInteger(idResponsable) || idResponsable <= 0)
+    ) {
+      errors.idResponsable = 'Selecciona un responsable válido.';
+    }
+
+    if (!fechaLimite) {
+      errors.fechaLimite = 'La fecha límite es obligatoria.';
+    }
+
+    const prioridadesPermitidas = ['ALTA', 'MEDIA', 'BAJA'];
+    if (!prioridadesPermitidas.includes(prioridad)) {
+      errors.prioridad = 'La prioridad seleccionada no es válida.';
+    }
+
+    const estatusPermitidos = ['PENDIENTE', 'EN_PROCESO', 'EN_REVISION', 'COMPLETADA'];
+    if (!estatusPermitidos.includes(estatus)) {
+      errors.estatus = 'El estatus seleccionado no es válido.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      return response.status(400).json({
+        ok: false,
+        message: 'Verifica los datos de la actividad.',
+        errors,
+      });
+    }
+
+    const existingResult = await pool.query(
       `
         SELECT
-          id_evidencia AS id,
-          enlace,
+          id_actividad,
+          titulo,
           descripcion,
-          estado,
-          creado_en AS "creadoEn"
-        FROM evidencias
+          id_creador,
+          id_responsable,
+          fecha_limite::text AS fecha_limite,
+          prioridad,
+          estatus
+        FROM actividades
         WHERE id_actividad = $1
-        ORDER BY id_evidencia
+        LIMIT 1
       `,
       [idActividad],
     );
 
-  await client.query('COMMIT');
+const existingActivity = existingResult.rows[0];
 
-  return response.status(200).json({
-    ok: true,
-    message:
-      'Actividad actualizada correctamente.',
-    actividad: {
-      ...result.rows[0],
-      evidencias: evidenciasResult.rows,
-    },
-  });
-} catch (error) {
-  await client.query('ROLLBACK');
-  throw error;
-} finally {
-  client.release();
-}
-      
-    } catch (error) {
-      console.error(
-        'Error actualizando actividad:',
-        error,
-      );
-
-      return response.status(500).json({
+    if (!existingActivity) {
+      return response.status(404).json({
         ok: false,
-        message:
-          'No fue posible actualizar la actividad.',
+        message: 'La actividad no existe.',
       });
     }
-  },
-);
 
-app.post(
-  '/api/activities/:id/comments',
-  requireAccessToken,
-  async (request, response) => {
+    // --- VALIDACIÓN DE PERMISOS Y BLOQUEO DE USUARIO AJENO ---
+    const idUsuarioAutenticado = request.auth.idUsuario;
+    const esCreador = Number(existingActivity.id_creador) === idUsuarioAutenticado;
+    const esResponsable = Number(existingActivity.id_responsable) === idUsuarioAutenticado;
+    const esAdmin = request.auth.rol === 'ADMIN';
+
+    // 1. Bloqueo total a usuarios ajenos
+    if (!esCreador && !esResponsable && !esAdmin) {
+      return response.status(403).json({
+        ok: false,
+        message: 'Acceso denegado: No tienes permisos para modificar esta actividad porque no eres ni el creador ni el responsable.',
+      });
+    }
+
+    // 2. Si solo es Responsable, no puede modificar datos generales
+    const datosGeneralesCambiaron =
+      titulo !== existingActivity.titulo ||
+      descripcion !== (existingActivity.descripcion || '') ||
+      fechaLimite !== existingActivity.fecha_limite ||
+      prioridad !== existingActivity.prioridad;
+
+    if (datosGeneralesCambiaron && !esCreador && !esAdmin) {
+      return response.status(403).json({
+        ok: false,
+        message: 'Acceso denegado: El responsable solo puede cambiar el estatus y gestionar evidencias.',
+      });
+    }
+
+    let idResponsableFinal = existingActivity.id_responsable ?? null;
+
+    if (responsableProvisto) {
+      if (idResponsable !== null) {
+        const responsableResult = await pool.query(
+          `
+            SELECT id_usuario
+            FROM usuarios
+            WHERE id_usuario = $1
+              AND estado = 'ACTIVO'
+            LIMIT 1
+          `,
+          [idResponsable],
+        );
+
+        if (!responsableResult.rows[0]) {
+          return response.status(400).json({
+            ok: false,
+            message: 'El responsable seleccionado no existe o está inactivo.',
+          });
+        }
+      }
+
+      idResponsableFinal = idResponsable;
+    }
+
+    const client = await pool.connect();
+
     try {
-      const idActividad = Number(
-        request.params.id,
-      );
+      await client.query('BEGIN');
 
-      const comentario =
-        typeof request.body?.comentario ===
-        'string'
-          ? request.body.comentario.trim()
-          : '';
-
-      if (
-        !Number.isInteger(idActividad) ||
-        idActividad <= 0
-      ) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'La actividad no es válida.',
-        });
-      }
-
-      if (!comentario) {
-        return response.status(400).json({
-          ok: false,
-          message:
-            'El comentario es obligatorio.',
-        });
-      }
-
-      const result = await pool.query(
+      const result = await client.query(
         `
-          INSERT INTO comentarios (
-            id_actividad,
-            id_usuario,
-            comentario
+          WITH actividad_actualizada AS (
+            UPDATE actividades
+            SET
+              titulo = $1,
+              descripcion = $2,
+              fecha_limite = $3,
+              prioridad = $4,
+              estatus = $5,
+              id_responsable = $6
+            WHERE id_actividad = $7
+            RETURNING *
           )
           SELECT
-            $1,
-            $2,
-            $3
-          WHERE EXISTS (
-            SELECT 1
-            FROM actividades
-            WHERE id_actividad = $1
-          )
-          RETURNING
-            id_comentario AS id,
-            comentario,
-            creado_en AS "creadoEn"
+            a.id_actividad AS id,
+            a.titulo,
+            COALESCE(a.descripcion, '') AS descripcion,
+            a.id_creador AS "idCreador",
+            a.id_responsable AS "idResponsable",
+            a.fecha_limite AS "fechaLimite",
+            a.estatus,
+            a.prioridad,
+            a.creado_en AS "creadoEn",
+            responsable.nombre AS responsable
+          FROM actividad_actualizada a
+          LEFT JOIN usuarios responsable
+            ON responsable.id_usuario = a.id_responsable
         `,
         [
+          titulo,
+          descripcion || null,
+          fechaLimite,
+          prioridad,
+          estatus,
+          idResponsableFinal,
           idActividad,
-          request.auth.idUsuario,
-          comentario,
         ],
       );
 
-      if (result.rows.length === 0) {
-        return response.status(404).json({
-          ok: false,
-          message:
-            'La actividad no existe.',
-        });
+      await client.query(
+        `
+          DELETE FROM evidencias
+          WHERE id_actividad = $1
+        `,
+        [idActividad],
+      );
+
+      for (const enlace of evidencias) {
+        await client.query(
+          `
+            INSERT INTO evidencias (
+              id_actividad,
+              enlace
+            )
+            VALUES ($1, $2)
+          `,
+          [idActividad, enlace],
+        );
       }
 
-      const userResult =
-        await pool.query(
-          `
-            SELECT nombre
-            FROM usuarios
-            WHERE id_usuario = $1
-          `,
-          [request.auth.idUsuario],
-        );
+      const evidenciasResult = await client.query(
+        `
+          SELECT
+            id_evidencia AS id,
+            enlace,
+            descripcion,
+            creado_en AS "creadoEn"
+          FROM evidencias
+          WHERE id_actividad = $1
+          ORDER BY id_evidencia
+        `,
+        [idActividad],
+      );
 
-      return response.status(201).json({
+      await client.query('COMMIT');
+
+      return response.status(200).json({
         ok: true,
-        message:
-          'Comentario agregado correctamente.',
-        comentario: {
+        message: 'Actividad actualizada correctamente.',
+        actividad: {
           ...result.rows[0],
-          usuario:
-            userResult.rows[0]?.nombre ||
-            'Usuario',
+          evidencias: evidenciasResult.rows,
         },
       });
     } catch (error) {
-      console.error(
-        'Error agregando comentario:',
-        error,
-      );
-
-      return response.status(500).json({
-        ok: false,
-        message:
-          'No fue posible agregar el comentario.',
-      });
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-  },
-);
+  } catch (error) {
+    console.error('Error actualizando actividad:', error);
+    return response.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar la actividad.',
+    });
+  }
+});
+
+/* =========================================
+   COMENTARIOS DE ACTIVIDAD
+========================================= */
+
+// OBTENER COMENTARIOS DE UNA ACTIVIDAD
+app.get('/api/activities/:id/comments', requireAccessToken, async (request, response) => {
+  try {
+    const idActividad = Number(request.params.id);
+
+    if (!Number.isInteger(idActividad) || idActividad <= 0) {
+      return response.status(400).json({ ok: false, message: 'ID de actividad no válido.' });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT
+          c.id_comentario AS id,
+          COALESCE(c.comentario, '') AS comentario,
+          c.creado_en AS "creadoEn",
+          u.nombre AS usuario
+        FROM comentarios c
+        INNER JOIN usuarios u ON u.id_usuario = c.id_usuario
+        WHERE c.id_actividad = $1
+        ORDER BY c.creado_en ASC
+      `,
+      [idActividad],
+    );
+
+    return response.status(200).json({
+      ok: true,
+      comentarios: result.rows,
+    });
+  } catch (error) {
+    console.error('Error obteniendo comentarios:', error);
+    return response.status(500).json({ ok: false, message: 'No se pudieron cargar los comentarios.' });
+  }
+});
+
+// AGREGAR UN NUEVO COMENTARIO
+app.post('/api/activities/:id/comments', requireAccessToken, async (request, response) => {
+  try {
+    const idActividad = Number(request.params.id);
+    const textoComentario =
+      typeof request.body?.comentario === 'string'
+        ? request.body.comentario.trim()
+        : typeof request.body?.contenido === 'string'
+        ? request.body.contenido.trim()
+        : '';
+
+    if (!Number.isInteger(idActividad) || idActividad <= 0) {
+      return response.status(400).json({ ok: false, message: 'ID de actividad no válido.' });
+    }
+
+    if (!textoComentario) {
+      return response.status(400).json({ ok: false, message: 'El comentario no puede estar vacío.' });
+    }
+
+    // Intenta insertar en la columna 'comentario' o 'contenido'
+    let result;
+    try {
+      result = await pool.query(
+        `
+          INSERT INTO comentarios (id_actividad, id_usuario, comentario)
+          VALUES ($1, $2, $3)
+          RETURNING id_comentario AS id, comentario, creado_en AS "creadoEn"
+        `,
+        [idActividad, request.auth.idUsuario, textoComentario],
+      );
+    } catch {
+      result = await pool.query(
+        `
+          INSERT INTO comentarios (id_actividad, id_usuario, contenido)
+          VALUES ($1, $2, $3)
+          RETURNING id_comentario AS id, contenido AS comentario, creado_en AS "creadoEn"
+        `,
+        [idActividad, request.auth.idUsuario, textoComentario],
+      );
+    }
+
+    return response.status(201).json({
+      ok: true,
+      message: 'Comentario agregado correctamente.',
+      comentario: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error guardando comentario:', error);
+    return response.status(500).json({ ok: false, message: 'No se pudo guardar el comentario.' });
+  }
+});
+
+/* =========================================
+   MANEJO DE RUTAS NO ENCONTRADAS (404)
+========================================= */
 
 app.use((_request, response) => {
   return response.status(404).json({
@@ -2350,12 +2031,15 @@ app.use((_request, response) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(
-    `TASK BLOQ API: http://localhost:${port}`,
-  );
+/* =========================================
+   INICIAR SERVIDOR
+========================================= */
 
-  console.log(
-    `Health: http://localhost:${port}/api/health`,
-  );
+const server = app.listen(port, () => {
+  console.log(`🚀 TASK BLOQ API corriendo en: http://localhost:${port}`);
+  console.log(`🏥 Health check: http://localhost:${port}/api/health`);
+});
+
+server.on('error', (error) => {
+  console.error('❌ Error al iniciar el servidor Express:', error);
 });

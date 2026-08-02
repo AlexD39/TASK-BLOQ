@@ -1,15 +1,5 @@
-import {
-  useEffect,
-  useState,
-} from 'react';
-
-import {
-  CalendarDays,
-  Save,
-  UserRound,
-  X,
-} from 'lucide-react';
-
+import { useEffect, useState } from 'react';
+import { CalendarDays, Save, UserRound, X } from 'lucide-react';
 import {
   validateActivityField,
   validateActivityForm,
@@ -39,27 +29,17 @@ function ActivityFormModal({
   onClose,
   onSubmit,
   users = [],
-  canAssignResponsible = false,
+  canAssignResponsible = true,
 }) {
-  const [form, setForm] =
-    useState(INITIAL_FORM);
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState(INITIAL_TOUCHED);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
-  const [errors, setErrors] =
-    useState({});
-
-  const [touched, setTouched] =
-    useState(INITIAL_TOUCHED);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [submitError, setSubmitError] =
-    useState('');
-
+  // Reset del formulario al abrir/cerrar modal
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+    if (!isOpen) return;
 
     setForm(INITIAL_FORM);
     setErrors({});
@@ -68,39 +48,24 @@ function ActivityFormModal({
     setSaving(false);
   }, [isOpen]);
 
+  // Manejo de scroll y atajo de teclado Escape
   useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
+    if (!isOpen) return undefined;
 
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow =
-      'hidden';
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
     function handleKeyDown(event) {
-      if (
-        event.key === 'Escape' &&
-        !saving
-      ) {
+      if (event.key === 'Escape' && !saving) {
         onClose();
       }
     }
 
-    window.addEventListener(
-      'keydown',
-      handleKeyDown,
-    );
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow =
-        previousOverflow;
-
-      window.removeEventListener(
-        'keydown',
-        handleKeyDown,
-      );
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose, saving]);
 
@@ -109,8 +74,7 @@ function ActivityFormModal({
   }
 
   function handleChange(event) {
-    const { name, value } =
-      event.target;
+    const { name, value } = event.target;
 
     setForm((currentForm) => ({
       ...currentForm,
@@ -124,18 +88,14 @@ function ActivityFormModal({
 
     setErrors((currentErrors) => ({
       ...currentErrors,
-      [name]: validateActivityField(
-        name,
-        value,
-      ),
+      [name]: validateActivityField(name, value),
     }));
 
     setSubmitError('');
   }
 
   function handleBlur(event) {
-    const { name, value } =
-      event.target;
+    const { name, value } = event.target;
 
     setTouched((currentTouched) => ({
       ...currentTouched,
@@ -144,68 +104,54 @@ function ActivityFormModal({
 
     setErrors((currentErrors) => ({
       ...currentErrors,
-      [name]: validateActivityField(
-        name,
-        value,
-      ),
+      [name]: validateActivityField(name, value),
     }));
   }
 
   function hasError(fieldName) {
-    return Boolean(
-      touched[fieldName] &&
-      errors[fieldName],
-    );
+    return Boolean(touched[fieldName] && errors[fieldName]);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-
     setSubmitError('');
 
+    const targetResponsable =
+      canAssignResponsible && form.idResponsable
+        ? Number(form.idResponsable)
+        : null;
+
+    // Payload unificado y sanitizado
     const cleanData = {
       titulo: form.titulo.trim(),
-      descripcion:
-        form.descripcion.trim(),
-      idResponsable: canAssignResponsible
-        ? form.idResponsable || null
-        : null,
-      fechaLimite:
-        form.fechaLimite,
-      prioridad:
-        form.prioridad,
+      descripcion: form.descripcion.trim(),
+      idResponsable: targetResponsable,
+      id_responsable: targetResponsable,
+      fechaLimite: form.fechaLimite || null,
+      fecha_limite: form.fechaLimite || null,
+      prioridad: form.prioridad,
       estatus: 'PENDIENTE',
     };
 
-    const formErrors =
-      validateActivityForm(cleanData);
+    const formErrors = validateActivityForm(cleanData);
 
     setTouched({
-  titulo: true,
-  descripcion: true,
-  idResponsable: true,
-  fechaLimite: true,
-  prioridad: true,
-});
+      titulo: true,
+      descripcion: true,
+      idResponsable: true,
+      fechaLimite: true,
+      prioridad: true,
+    });
 
     setErrors(formErrors);
 
-    if (
-      Object.keys(formErrors).length > 0
-    ) {
-      setSubmitError(
-        'Revisa los campos marcados antes de guardar.',
-      );
+    if (Object.keys(formErrors).length > 0) {
+      setSubmitError('Revisa los campos marcados antes de guardar.');
 
-      const firstInvalidField =
-        Object.keys(formErrors)[0];
+      const firstInvalidField = Object.keys(formErrors)[0];
 
       window.setTimeout(() => {
-        document
-          .querySelector(
-            `[name="${firstInvalidField}"]`,
-          )
-          ?.focus();
+        document.querySelector(`[name="${firstInvalidField}"]`)?.focus();
       }, 0);
 
       return;
@@ -214,11 +160,15 @@ function ActivityFormModal({
     try {
       setSaving(true);
 
-      await onSubmit?.(cleanData);
+      if (onSubmit) {
+        await onSubmit(cleanData);
+      }
+
+      onClose();
     } catch (error) {
+      console.error('Error al registrar la actividad:', error);
       setSubmitError(
-        error.message ||
-          'No fue posible registrar la actividad.',
+        error.message || 'No fue posible registrar la actividad.',
       );
     } finally {
       setSaving(false);
@@ -226,11 +176,7 @@ function ActivityFormModal({
   }
 
   function handleBackdropClick(event) {
-    if (
-      event.target ===
-        event.currentTarget &&
-      !saving
-    ) {
+    if (event.target === event.currentTarget && !saving) {
       onClose();
     }
   }
@@ -247,9 +193,7 @@ function ActivityFormModal({
         aria-labelledby="activity-modal-title"
       >
         <header className="activity-modal__header">
-          <h2 id="activity-modal-title">
-            Nueva actividad
-          </h2>
+          <h2 id="activity-modal-title">Nueva actividad</h2>
 
           <button
             type="button"
@@ -258,11 +202,7 @@ function ActivityFormModal({
             disabled={saving}
             aria-label="Cerrar formulario"
           >
-            <X
-              size={22}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />
+            <X size={22} strokeWidth={1.8} aria-hidden="true" />
           </button>
         </header>
 
@@ -281,11 +221,10 @@ function ActivityFormModal({
               </div>
             )}
 
+            {/* Campo Título */}
             <div
               className={`activity-field ${
-                hasError('titulo')
-                  ? 'activity-field--error'
-                  : ''
+                hasError('titulo') ? 'activity-field--error' : ''
               }`}
             >
               <label htmlFor="titulo">
@@ -301,13 +240,9 @@ function ActivityFormModal({
                 onBlur={handleBlur}
                 placeholder="Nombre de la actividad académica"
                 maxLength={180}
-                aria-invalid={
-                  hasError('titulo')
-                }
+                aria-invalid={hasError('titulo')}
                 aria-describedby={
-                  hasError('titulo')
-                    ? 'titulo-error'
-                    : undefined
+                  hasError('titulo') ? 'titulo-error' : undefined
                 }
                 autoFocus
               />
@@ -322,16 +257,13 @@ function ActivityFormModal({
               )}
             </div>
 
+            {/* Campo Descripción */}
             <div
               className={`activity-field ${
-                hasError('descripcion')
-                  ? 'activity-field--error'
-                  : ''
+                hasError('descripcion') ? 'activity-field--error' : ''
               }`}
             >
-              <label htmlFor="descripcion">
-                Descripción
-              </label>
+              <label htmlFor="descripcion">Descripción</label>
 
               <textarea
                 id="descripcion"
@@ -342,20 +274,14 @@ function ActivityFormModal({
                 placeholder="Describe el objetivo y alcance de esta actividad..."
                 rows={4}
                 maxLength={1000}
-                aria-invalid={
-                  hasError('descripcion')
-                }
+                aria-invalid={hasError('descripcion')}
                 aria-describedby={
-                  hasError('descripcion')
-                    ? 'descripcion-error'
-                    : undefined
+                  hasError('descripcion') ? 'descripcion-error' : undefined
                 }
               />
 
               <div className="activity-field__meta">
-                <span>
-                  {form.descripcion.length}/1000
-                </span>
+                <span>{form.descripcion.length}/1000</span>
               </div>
 
               {hasError('descripcion') && (
@@ -368,17 +294,12 @@ function ActivityFormModal({
               )}
             </div>
 
+            {/* Campo Responsable */}
             <div className="activity-field">
-              <label htmlFor="idResponsable">
-                Responsable
-              </label>
+              <label htmlFor="idResponsable">Responsable</label>
 
               <div className="activity-input-icon">
-                <UserRound
-                  size={20}
-                  strokeWidth={1.7}
-                  aria-hidden="true"
-                />
+                <UserRound size={20} strokeWidth={1.7} aria-hidden="true" />
 
                 {canAssignResponsible ? (
                   <select
@@ -388,18 +309,19 @@ function ActivityFormModal({
                     onChange={handleChange}
                     onBlur={handleBlur}
                   >
-                    <option value="">
-                      Sin asignar
-                    </option>
+                    <option value="">Sin asignar</option>
 
-                    {users.map((availableUser) => (
-                      <option
-                        key={availableUser.id}
-                        value={availableUser.id}
-                      >
-                        {availableUser.nombre}
-                      </option>
-                    ))}
+                    {users.map((availableUser) => {
+                      const userId = availableUser.id || availableUser.id_usuario;
+                      return (
+                        <option
+                          key={userId}
+                          value={userId}
+                        >
+                          {availableUser.nombre || availableUser.nombre_completo || availableUser.name}
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <input
@@ -407,25 +329,23 @@ function ActivityFormModal({
                     type="text"
                     value="Sin asignar"
                     disabled
-                    aria-label="Solo un administrador puede asignar un responsable"
+                    aria-label="No tienes permisos para asignar responsable"
                   />
                 )}
               </div>
 
-              {canAssignResponsible && (
-                <small className="activity-field__help">
-                  Solo un administrador puede
-                  asignar responsables.
-                </small>
-              )}
+              <small className="activity-field__help">
+                {canAssignResponsible
+                  ? 'Asigna un miembro del equipo como responsable de esta tarea.'
+                  : 'Solo los usuarios autorizados pueden asignar responsables.'}
+              </small>
             </div>
 
+            {/* Fila Fecha Límite + Prioridad */}
             <div className="activity-form__row">
               <div
                 className={`activity-field ${
-                  hasError('fechaLimite')
-                    ? 'activity-field--error'
-                    : ''
+                  hasError('fechaLimite') ? 'activity-field--error' : ''
                 }`}
               >
                 <label htmlFor="fechaLimite">
@@ -446,24 +366,14 @@ function ActivityFormModal({
                     value={form.fechaLimite}
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    aria-invalid={
-                      hasError(
-                        'fechaLimite',
-                      )
-                    }
+                    aria-invalid={hasError('fechaLimite')}
                     aria-describedby={
-                      hasError(
-                        'fechaLimite',
-                      )
-                        ? 'fecha-error'
-                        : undefined
+                      hasError('fechaLimite') ? 'fecha-error' : undefined
                     }
                   />
                 </div>
 
-                {hasError(
-                  'fechaLimite',
-                ) && (
+                {hasError('fechaLimite') && (
                   <p
                     id="fecha-error"
                     className="activity-field__error"
@@ -475,9 +385,7 @@ function ActivityFormModal({
 
               <div
                 className={`activity-field ${
-                  hasError('prioridad')
-                    ? 'activity-field--error'
-                    : ''
+                  hasError('prioridad') ? 'activity-field--error' : ''
                 }`}
               >
                 <label htmlFor="prioridad">
@@ -490,30 +398,15 @@ function ActivityFormModal({
                   value={form.prioridad}
                   onChange={handleChange}
                   onBlur={handleBlur}
-                  aria-invalid={
-                    hasError('prioridad')
-                  }
+                  aria-invalid={hasError('prioridad')}
                   aria-describedby={
-                    hasError('prioridad')
-                      ? 'prioridad-error'
-                      : undefined
+                    hasError('prioridad') ? 'prioridad-error' : undefined
                   }
                 >
-                  <option value="">
-                    Seleccionar...
-                  </option>
-
-                  <option value="ALTA">
-                    Alta
-                  </option>
-
-                  <option value="MEDIA">
-                    Media
-                  </option>
-
-                  <option value="BAJA">
-                    Baja
-                  </option>
+                  <option value="">Seleccionar...</option>
+                  <option value="ALTA">Alta</option>
+                  <option value="MEDIA">Media</option>
+                  <option value="BAJA">Baja</option>
                 </select>
 
                 {hasError('prioridad') && (
@@ -526,12 +419,12 @@ function ActivityFormModal({
                 )}
               </div>
             </div>
+
             <div className="activity-field">
-  <small className="activity-field__help">
-    La actividad se registrará inicialmente
-    con el estatus Pendiente.
-  </small>
-</div>
+              <small className="activity-field__help">
+                La actividad se registrará inicialmente con el estatus Pendiente.
+              </small>
+            </div>
           </div>
 
           <footer className="activity-form__footer">
@@ -540,15 +433,8 @@ function ActivityFormModal({
               className="activity-button activity-button--primary"
               disabled={saving}
             >
-              <Save
-                size={20}
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
-
-              {saving
-                ? 'Guardando...'
-                : 'Guardar actividad'}
+              <Save size={20} strokeWidth={1.8} aria-hidden="true" />
+              {saving ? 'Guardando...' : 'Guardar actividad'}
             </button>
 
             <button
