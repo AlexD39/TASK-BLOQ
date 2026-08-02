@@ -1,0 +1,31 @@
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: taskbloq_database
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: taskbloq
+      POSTGRES_USER: taskbloq_user
+      POSTGRES_PASSWORD: taskbloq_dev_password
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - taskbloq_database_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U taskbloq_user -d taskbloq"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  taskbloq_database_data:
