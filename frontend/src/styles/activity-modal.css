@@ -572,6 +572,8 @@
 .activity-comments {
   display: grid;
   gap: 14px;
+}
+
 .activity-comments__header {
   display: flex;
   align-items: center;
