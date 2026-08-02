@@ -2388,6 +2388,113 @@ try {
   },
 );
 
+/* =========================================
+   LISTAR COMENTARIOS DE UNA ACTIVIDAD
+========================================= */
+
+app.get(
+  '/api/activities/:id/comments',
+  requireAccessToken,
+  async (request, response) => {
+    try {
+      const idActividad = Number(
+        request.params.id,
+      );
+
+      if (
+        !Number.isInteger(idActividad) ||
+        idActividad <= 0
+      ) {
+        return response.status(400).json({
+          ok: false,
+          message:
+            'La actividad no es válida.',
+        });
+      }
+
+      const activityResult =
+        await pool.query(
+          `
+            SELECT
+              id_creador,
+              id_responsable
+            FROM actividades
+            WHERE id_actividad = $1
+            LIMIT 1
+          `,
+          [idActividad],
+        );
+
+      const activity =
+        activityResult.rows[0];
+
+      if (!activity) {
+        return response.status(404).json({
+          ok: false,
+          message:
+            'La actividad no existe.',
+        });
+      }
+
+      const isCreator =
+        Number(activity.id_creador) ===
+        request.auth.idUsuario;
+
+      const isResponsible =
+        Number(activity.id_responsable) ===
+        request.auth.idUsuario;
+
+      const isAdmin =
+        request.auth.rol === 'ADMIN';
+
+      if (
+        !isCreator &&
+        !isResponsible &&
+        !isAdmin
+      ) {
+        return response.status(403).json({
+          ok: false,
+          message:
+            'No tienes permiso para consultar los comentarios de esta actividad.',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          SELECT
+            c.id_comentario AS id,
+            c.comentario,
+            c.creado_en AS "creadoEn",
+            u.nombre AS usuario
+          FROM comentarios c
+          INNER JOIN usuarios u
+            ON u.id_usuario = c.id_usuario
+          WHERE c.id_actividad = $1
+          ORDER BY
+            c.creado_en ASC,
+            c.id_comentario ASC
+        `,
+        [idActividad],
+      );
+
+      return response.status(200).json({
+        ok: true,
+        comentarios: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando comentarios:',
+        error,
+      );
+
+      return response.status(500).json({
+        ok: false,
+        message:
+          'No fue posible consultar los comentarios.',
+      });
+    }
+  },
+);
 
 /* =========================================
    REGISTRAR EVIDENCIA
