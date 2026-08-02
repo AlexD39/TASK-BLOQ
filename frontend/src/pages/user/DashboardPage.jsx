@@ -825,8 +825,18 @@ async function handleResubmitEvidence(
   onCommentCreated={
     handleCommentCreated
   }
+  onCreateEvidence={
+    handleCreateEvidence
+  }
+  onReviewEvidence={
+    handleReviewEvidence
+  }
+  onResubmitEvidence={
+    handleResubmitEvidence
+  }
   users={users}
 />
+
 
     </div>
   );

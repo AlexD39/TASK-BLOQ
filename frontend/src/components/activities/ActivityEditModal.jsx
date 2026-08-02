@@ -131,10 +131,10 @@ export default function ActivityEditModal({
   currentUser,
   onClose,
   onSubmit,
-  onCommentCreated,
-  onCreateEvidence,
-  onReviewEvidence,
-  onResubmitEvidence,
+  onCommentCreated = null,
+  onCreateEvidence = null,
+  onReviewEvidence = null,
+  onResubmitEvidence = null,
   users = [],
   canAssignResponsible = true,
 }) {
@@ -201,6 +201,12 @@ const allowedStatuses =
 
   const [comments, setComments] =
   useState([]);
+
+const [commentsLoading, setCommentsLoading] =
+  useState(false);
+
+const [commentsError, setCommentsError] =
+  useState('');
 
 const [newComment, setNewComment] =
   useState('');
@@ -483,58 +489,58 @@ function handleStatusChange(event) {
     }
   }
 
-  async function handleAddComment() {
+async function handleAddComment() {
   const cleanComment =
     newComment.trim();
 
+  setCommentsError('');
+  setSubmitError('');
+
   if (!cleanComment) {
+    return;
+  }
+
+  if (cleanComment.length > 1000) {
+    setCommentsError(
+      'El comentario no puede superar 1000 caracteres.',
+    );
+
     return;
   }
 
   try {
     setSendingComment(true);
 
-    const response = await fetch(
-      `${
-        import.meta.env.VITE_API_URL ||
-        'http://localhost:3001/api'
-      }/activities/${activity.id}/comments`,
-      {
-        method: 'POST',
-
-        headers: {
-          'Content-Type':
-            'application/json',
-
-          Authorization:
-            `Bearer ${localStorage.getItem(
-              'accessToken',
-            )}`,
-        },
-
-        body: JSON.stringify({
+    const result =
+      await createActivityComment(
+        activity.id,
+        {
           comentario: cleanComment,
-        }),
-      },
-    );
-
-    const data = await response.json();
-
-    if (!response.ok || !data.ok) {
-      throw new Error(
-        data.message ||
-          'No fue posible agregar el comentario.',
+        },
       );
-    }
 
     setComments((currentComments) => [
       ...currentComments,
-      data.comentario,
+      result.comentario,
     ]);
 
     setNewComment('');
+
+    if (
+      typeof onCommentCreated ===
+      'function'
+    ) {
+      onCommentCreated(
+        activity.id,
+        result.totalComentarios ??
+          comments.length + 1,
+      );
+    }
   } catch (error) {
-    setSubmitError(error.message);
+    setCommentsError(
+      error.message ||
+        'No fue posible agregar el comentario.',
+    );
   } finally {
     setSendingComment(false);
   }
@@ -588,6 +594,17 @@ async function handleCreateEvidence() {
     return;
   }
 
+  if (
+    typeof onCreateEvidence !==
+    'function'
+  ) {
+    setEvidenceError(
+      'La función para registrar evidencias no está conectada.',
+    );
+
+    return;
+  }
+
   try {
     setEvidenceSaving(true);
 
@@ -613,8 +630,20 @@ async function handleCreateEvidence() {
 async function handleApproveEvidence(
   evidence,
 ) {
+  setEvidenceError('');
+
+  if (
+    typeof onReviewEvidence !==
+    'function'
+  ) {
+    setEvidenceError(
+      'La función para revisar evidencias no está conectada.',
+    );
+
+    return;
+  }
+
   try {
-    setEvidenceError('');
     setReviewingEvidenceId(
       evidence.id,
     );
@@ -872,112 +901,138 @@ const formErrors =
               )}
             </div>
 
-<div className="activity-comments">
-  <div className="activity-comments__header">
-    <div className="activity-comments__title">
-      <MessageSquare
-        size={20}
-        strokeWidth={1.8}
-      />
-
-      <strong>Comentarios</strong>
-
-      <span className="activity-comments__count">
-        {comments.length}
-      </span>
-    </div>
-  </div>
-
-  <div className="activity-comments__list">
-    {comments.length === 0 ? (
-      <div className="activity-comments__empty">
+{canViewComments && (
+  <section className="activity-comments">
+    <header className="activity-comments__header">
+      <div className="activity-comments__title">
         <MessageSquare
-          size={26}
-          strokeWidth={1.5}
+          size={20}
+          strokeWidth={1.8}
         />
 
-        <span>
-          Sin comentarios registrados
+        <strong>Comentarios</strong>
+
+        <span className="activity-comments__count">
+          {comments.length}
         </span>
       </div>
-    ) : (
-      comments.map((comment) => (
-        <article
-          className="activity-comment"
-          key={comment.id}
-        >
-          <div className="activity-comment__avatar">
-            {comment.usuario
-              ?.split(' ')
-              .map((word) => word[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase() || 'U'}
-          </div>
+    </header>
 
-          <div className="activity-comment__content">
-            <div className="activity-comment__top">
-              <strong>
-                {comment.usuario || 'Usuario'}
-              </strong>
+    {commentsError && (
+      <div
+        className="activity-comments__error"
+        role="alert"
+      >
+        {commentsError}
+      </div>
+    )}
 
-              <span>
-                {comment.creadoEn
-                  ? new Date(
-                      comment.creadoEn,
-                    ).toLocaleDateString(
-                      'es-MX',
-                      {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      },
-                    )
-                  : ''}
-              </span>
+    <div className="activity-comments__list">
+      {commentsLoading ? (
+        <div className="activity-comments__empty">
+          <MessageSquare
+            size={26}
+            strokeWidth={1.5}
+          />
+
+          <span>
+            Cargando comentarios...
+          </span>
+        </div>
+      ) : comments.length === 0 ? (
+        <div className="activity-comments__empty">
+          <MessageSquare
+            size={26}
+            strokeWidth={1.5}
+          />
+
+          <span>
+            Sin comentarios registrados
+          </span>
+        </div>
+      ) : (
+        comments.map((comment) => (
+          <article
+            className="activity-comment"
+            key={comment.id}
+          >
+            <div className="activity-comment__avatar">
+              {comment.usuario
+                ?.split(' ')
+                .map((word) => word[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase() || 'U'}
             </div>
 
-            <p>{comment.comentario}</p>
-          </div>
-        </article>
-      ))
+            <div className="activity-comment__content">
+              <div className="activity-comment__top">
+                <strong>
+                  {comment.usuario || 'Usuario'}
+                </strong>
+
+                <time>
+                  {formatCommentDate(
+                    comment.creadoEn,
+                  )}
+                </time>
+              </div>
+
+              <p>
+                {comment.comentario}
+              </p>
+            </div>
+          </article>
+        ))
+      )}
+    </div>
+
+    {canComment ? (
+      <div className="activity-comments__form">
+        <input
+          type="text"
+          value={newComment}
+          onChange={(event) => {
+            setNewComment(
+              event.target.value,
+            );
+
+            setCommentsError('');
+          }}
+          placeholder="Escribe un comentario..."
+          maxLength={1000}
+          disabled={sendingComment}
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter' &&
+              !event.shiftKey
+            ) {
+              event.preventDefault();
+              handleAddComment();
+            }
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={handleAddComment}
+          disabled={
+            sendingComment ||
+            !newComment.trim()
+          }
+          aria-label="Enviar comentario"
+        >
+          <Send size={20} />
+        </button>
+      </div>
+    ) : (
+      <div className="activity-comments__notice">
+        Solo el creador o el responsable pueden
+        agregar comentarios.
+      </div>
     )}
-  </div>
-
-  <div className="activity-comments__form">
-    <input
-      type="text"
-      value={newComment}
-      onChange={(event) =>
-        setNewComment(event.target.value)
-      }
-      placeholder="Escribe un comentario..."
-      maxLength={1000}
-      disabled={sendingComment}
-      onKeyDown={(event) => {
-        if (
-          event.key === 'Enter' &&
-          !event.shiftKey
-        ) {
-          event.preventDefault();
-          handleAddComment();
-        }
-      }}
-    />
-
-    <button
-      type="button"
-      onClick={handleAddComment}
-      disabled={
-        sendingComment ||
-        !newComment.trim()
-      }
-      aria-label="Enviar comentario"
-    >
-      <Send size={20} />
-    </button>
-  </div>
-</div>
+  </section>
+)}
 
 <section className="activity-evidence-section">
   <header className="activity-evidence-section__header">
@@ -1510,9 +1565,17 @@ const formErrors =
       onSubmit={async (
         observation,
       ) => {
-        if (!evidenceToReject) {
-          return;
-        }
+if (
+  !evidenceToReject ||
+  typeof onReviewEvidence !==
+    'function'
+) {
+  setEvidenceError(
+    'La función para revisar evidencias no está conectada.',
+  );
+
+  return;
+}
 
         await onReviewEvidence(
           evidenceToReject.id,
@@ -1537,9 +1600,17 @@ const formErrors =
       onSubmit={async (
         evidenceData,
       ) => {
-        if (!evidenceToResubmit) {
-          return;
-        }
+if (
+  !evidenceToResubmit ||
+  typeof onResubmitEvidence !==
+    'function'
+) {
+  setEvidenceError(
+    'La función para reenviar evidencias no está conectada.',
+  );
+
+  return;
+}
 
         await onResubmitEvidence(
           evidenceToResubmit.id,
