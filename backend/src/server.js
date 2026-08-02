@@ -2391,6 +2391,7 @@ try {
 
 /* =========================================
    REGISTRAR EVIDENCIA
+   =========================================*/
 app.post(
   '/api/activities/:id/comments',
   requireAccessToken,
