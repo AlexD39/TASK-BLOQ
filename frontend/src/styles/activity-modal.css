@@ -571,24 +571,6 @@
 
 /* =========================================================
    COMENTARIOS Y EVIDENCIAS — AJUSTE VISUAL
-========================================================= */
-
-.activity-comments,
-.activity-evidence-section {
-  width: 100%;
-  margin-top: 20px;
-  padding: 20px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-  box-sizing: border-box;
-}
-
-/* =========================================================
-   COMENTARIOS
-========================================================= */
-
 .activity-comments__header {
   display: flex;
   align-items: center;
