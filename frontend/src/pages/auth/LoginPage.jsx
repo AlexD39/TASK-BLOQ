@@ -136,12 +136,6 @@ export default function LoginPage() {
     : 'Iniciar sesión'}
 </button>
 
-          {/* Caja de Credenciales de demostración */}
-          <div style={styles.demoBox}>
-            <p style={styles.demoTitle}>Credenciales de demostración</p>
-            <div style={styles.demoPill}>admin@taskbloq.edu</div>
-            <div style={styles.demoPill}>TaskBloq2026</div>
-          </div>
         </form>
       </div>
 
