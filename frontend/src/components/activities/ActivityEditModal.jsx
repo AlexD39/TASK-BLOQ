@@ -259,8 +259,7 @@ const canComment =
   isCreator ||
   isResponsible;
 
-
-useEffect(() => {
+ useEffect(() => {
   let componentIsMounted = true;
 
   if (
@@ -273,6 +272,8 @@ useEffect(() => {
 
   setComments([]);
   setNewComment('');
+  setCommentsError('');
+  setCommentsLoading(true);
 
   async function loadComments() {
     try {
@@ -283,17 +284,23 @@ useEffect(() => {
 
       if (componentIsMounted) {
         setComments(
-          Array.isArray(result.comentarios)
+          Array.isArray(
+            result.comentarios,
+          )
             ? result.comentarios
             : [],
         );
       }
     } catch (error) {
       if (componentIsMounted) {
-        setSubmitError(
+        setCommentsError(
           error.message ||
             'No fue posible cargar los comentarios.',
         );
+      }
+    } finally {
+      if (componentIsMounted) {
+        setCommentsLoading(false);
       }
     }
   }
@@ -307,7 +314,7 @@ useEffect(() => {
   isOpen,
   activity?.id,
   canViewComments,
-]);
+]); 
 
   useEffect(() => {
   if (!isOpen || !activity?.id) {
